@@ -13,11 +13,6 @@ import {
 // Existing pages
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const Users = lazy(() => import("../pages/Users"));
-const Auctions = lazy(() => import("../pages/Auctions"));
-const Lots = lazy(() => import("../pages/Lots"));
-const Bids = lazy(() => import("../pages/Bids"));
-const Plans = lazy(() => import("../pages/Plans"));
-const Purchases = lazy(() => import("../pages/Purchases"));
 
 // New survey pages
 const Surveys = lazy(() => import("../pages/Surveys"));
@@ -54,12 +49,7 @@ const routes = [
     hide: true, // ✅ sidebar me mat dikhana
   },
 
-  // (Baaki tumhare pehle wale routes agar use ho rahe hain to unko bhi yaha rakho:)
-  // { path: "/auctions", component: Auctions, name: "Auctions", icon: FaGavel },
-  // { path: "/lots", component: Lots, name: "Lots", icon: FaBox },
-  // { path: "/bids", component: Bids, name: "Bids", icon: FaCoins },
-  // { path: "/plans", component: Plans, name: "Plans", icon: FaCoins },
-  // { path: "/purchases", component: Purchases, name: "Purchases", icon: FaCoins },
+
 ];
 
 export default routes;

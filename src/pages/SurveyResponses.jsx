@@ -10,6 +10,7 @@ import {
   FaTimes,
   FaUser,
   FaHeadphones,
+  FaCheckCircle,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -39,12 +40,12 @@ export default function SurveyResponses() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
 
-  // modal state
-  const [modalOpen, setModalOpen] = useState(false);
+  // detail screen state
   const [selectedSurvey, setSelectedSurvey] = useState(null); // from summary
   const [selectedUser, setSelectedUser] = useState(null); // { userCode, userName, userMobile }
   const [userLoading, setUserLoading] = useState(false);
   const [userSurveyData, setUserSurveyData] = useState(null); // full payload from API
+  const [responseFilter, setResponseFilter] = useState("ALL"); // ALL | APPROVED | NOT_APPROVED
 
   const loadSummary = async () => {
     try {
@@ -87,12 +88,12 @@ export default function SurveyResponses() {
     });
   }, [summary, search, statusFilter]);
 
-  // modal open helper
-  const openUserModal = async (survey, user) => {
+  // open full-screen detail view
+  const openUserDetail = async (survey, user) => {
     setSelectedSurvey(survey);
     setSelectedUser(user);
-    setModalOpen(true);
     setUserSurveyData(null);
+    setResponseFilter("ALL");
 
     try {
       setUserLoading(true);
@@ -109,14 +110,15 @@ export default function SurveyResponses() {
     }
   };
 
-  const closeModal = () => {
-    setModalOpen(false);
+  const closeDetail = () => {
     setSelectedSurvey(null);
     setSelectedUser(null);
     setUserSurveyData(null);
+    setUserLoading(false);
+    setResponseFilter("ALL");
   };
 
-  // ---- UI ----
+  // ---- Loading & error for main ----
   if (loading) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
@@ -145,6 +147,390 @@ export default function SurveyResponses() {
     );
   }
 
+  // ---------- DETAIL VIEW (full screen) ----------
+  if (selectedSurvey && selectedUser) {
+    const surveyItem =
+      userSurveyData?.surveys?.find(
+        (sv) =>
+          String(sv.surveyId) === String(selectedSurvey?.surveyId) ||
+          sv.surveyCode === selectedSurvey?.surveyCode
+      ) || null;
+
+    let content;
+
+    if (userLoading) {
+      content = (
+        <div className="flex items-center justify-center py-10">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mx-auto" />
+            <p
+              className="mt-3 text-sm"
+              style={{ color: themeColors.text }}
+            >
+              Loading user responses...
+            </p>
+          </div>
+        </div>
+      );
+    } else if (!userSurveyData) {
+      content = (
+        <p
+          className="text-sm opacity-75"
+          style={{ color: themeColors.text }}
+        >
+          No data found.
+        </p>
+      );
+    } else if (!surveyItem || !surveyItem.responses?.length) {
+      content = (
+        <p
+          className="text-sm opacity-75"
+          style={{ color: themeColors.text }}
+        >
+          Is user ne is survey ka koi response nahi diya (ya data migrate nahi
+          hua).
+        </p>
+      );
+    } else {
+      const responses = surveyItem.responses || [];
+      const totalResponses = responses.length;
+      const approvedCount = responses.filter((r) => r.isApproved).length;
+      const notApprovedCount = totalResponses - approvedCount;
+
+      // apply filters
+      const filteredResponses = responses.filter((r) => {
+        if (responseFilter === "APPROVED") return r.isApproved;
+        if (responseFilter === "NOT_APPROVED") return !r.isApproved;
+        return true; // ALL
+      });
+
+      content = (
+        <>
+          {/* Stats + filters */}
+          <div className="space-y-4">
+            {/* Stats */}
+            <div
+              className="rounded-2xl border p-4 grid grid-cols-1 sm:grid-cols-3 gap-3"
+              style={{
+                borderColor: themeColors.border,
+                backgroundColor: themeColors.surface,
+              }}
+            >
+              <div>
+                <p
+                  className="text-[11px] opacity-70"
+                  style={{ color: themeColors.text }}
+                >
+                  Total Responses
+                </p>
+                <p
+                  className="text-xl font-bold mt-1"
+                  style={{ color: themeColors.primary }}
+                >
+                  {totalResponses}
+                </p>
+              </div>
+              <div>
+                <p
+                  className="text-[11px] opacity-70"
+                  style={{ color: themeColors.text }}
+                >
+                  Approved
+                </p>
+                <p
+                  className="text-xl font-bold mt-1 flex items-center gap-1"
+                  style={{ color: themeColors.success }}
+                >
+                  <FaCheckCircle />
+                  {approvedCount}
+                </p>
+              </div>
+              <div>
+                <p
+                  className="text-[11px] opacity-70"
+                  style={{ color: themeColors.text }}
+                >
+                  Not Approved
+                </p>
+                <p
+                  className="text-xl font-bold mt-1"
+                  style={{ color: themeColors.danger }}
+                >
+                  {notApprovedCount}
+                </p>
+              </div>
+            </div>
+
+            {/* Filter bar */}
+            <div
+              className="rounded-2xl border p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+              style={{
+                borderColor: themeColors.border,
+                backgroundColor: themeColors.surface,
+              }}
+            >
+              <div>
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: themeColors.text }}
+                >
+                  Responses for this user
+                </p>
+                <p
+                  className="text-[11px] opacity-70 mt-0.5"
+                  style={{ color: themeColors.text }}
+                >
+                  Filter karo approval ke hisaab se.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="text-[11px] opacity-70"
+                  style={{ color: themeColors.text }}
+                >
+                  Show:
+                </span>
+                <select
+                  className="px-2 py-1.5 rounded-lg border text-[11px]"
+                  style={{
+                    borderColor: themeColors.border,
+                    backgroundColor: themeColors.background,
+                    color: themeColors.text,
+                  }}
+                  value={responseFilter}
+                  onChange={(e) => setResponseFilter(e.target.value)}
+                >
+                  <option value="ALL">All Responses</option>
+                  <option value="APPROVED">Only Approved</option>
+                  <option value="NOT_APPROVED">Only Not Approved</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Response list */}
+          <div className="mt-4 space-y-4">
+            {filteredResponses.length === 0 && (
+              <p
+                className="text-sm opacity-75"
+                style={{ color: themeColors.text }}
+              >
+                No responses matching current filter.
+              </p>
+            )}
+
+            {filteredResponses.map((resp, idx) => (
+              <div
+                key={resp.responseId || idx}
+                className="rounded-2xl border p-3 sm:p-4 space-y-3"
+                style={{
+                  borderColor: themeColors.border,
+                  backgroundColor: themeColors.surface,
+                }}
+              >
+                {/* Response header */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <p
+                      className="text-xs font-semibold"
+                      style={{ color: themeColors.text }}
+                    >
+                      Response #{responses.length - idx}
+                    </p>
+                    <p
+                      className="text-[11px] opacity-70"
+                      style={{ color: themeColors.text }}
+                    >
+                      {fmtDateTime(resp.createdAt)}
+                    </p>
+                    {resp.isCompleted === false && (
+                      <p
+                        className="text-[11px] opacity-70"
+                        style={{ color: themeColors.danger }}
+                      >
+                        (Incomplete response)
+                      </p>
+                    )}
+
+                    {/* Approval info */}
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      {resp.isApproved ? (
+                        <span
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                          style={{
+                            backgroundColor: themeColors.success + "20",
+                            color: themeColors.success,
+                          }}
+                        >
+                          <FaCheckCircle />
+                          Approved
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                          style={{
+                            backgroundColor: themeColors.danger + "20",
+                            color: themeColors.danger,
+                          }}
+                        >
+                          Not Approved
+                        </span>
+                      )}
+                      <span
+                        className="text-[11px] opacity-70"
+                        style={{ color: themeColors.text }}
+                      >
+                        Approved By:{" "}
+                        <span className="font-mono">
+                          {resp.approvedBy ? String(resp.approvedBy) : "-"}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {resp.audioUrl && (
+                    <a
+                      href={resp.audioUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-[11px] font-semibold self-start sm:self-auto"
+                      style={{
+                        borderColor: themeColors.primary,
+                        color: themeColors.primary,
+                        backgroundColor: themeColors.background,
+                      }}
+                    >
+                      <FaHeadphones />
+                      Listen Audio
+                    </a>
+                  )}
+                </div>
+
+                <hr
+                  className="border-t my-1"
+                  style={{ borderColor: themeColors.border }}
+                />
+
+                {/* Q&A list */}
+                <div className="mt-1 space-y-3">
+                  {(resp.answers || []).map((a, qIndex) => {
+                    let answerText = "-";
+
+                    if (a.questionType === "OPEN_ENDED") {
+                      answerText = a.answerText || "-";
+                    } else if (a.questionType === "RATING") {
+                      answerText =
+                        typeof a.rating === "number"
+                          ? String(a.rating)
+                          : "-";
+                    } else {
+                      const opts = a.selectedOptions || [];
+                      answerText = opts.length > 0 ? opts.join(", ") : "-";
+                    }
+
+                    return (
+                      <div
+                        key={a.questionId || qIndex}
+                        className="rounded-lg border p-2.5 sm:p-3"
+                        style={{
+                          borderColor: themeColors.border,
+                          backgroundColor: themeColors.background,
+                        }}
+                      >
+                        <div className="flex flex-col gap-1">
+                          <p
+                            className="text-xs font-semibold"
+                            style={{ color: themeColors.text }}
+                          >
+                            Q{qIndex + 1}. {a.questionText}
+                          </p>
+                          <p
+                            className="text-[11px] opacity-70"
+                            style={{ color: themeColors.text }}
+                          >
+                            Type: {a.questionType}
+                          </p>
+                          <p
+                            className="text-xs mt-1"
+                            style={{ color: themeColors.text }}
+                          >
+                            <span className="font-semibold">Answer: </span>
+                            {answerText}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      );
+    }
+
+    // Full-page detail layout
+    return (
+      <div className="space-y-6">
+        {/* Detail header with back button */}
+        <div className="flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={closeDetail}
+            className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border w-max"
+            style={{
+              borderColor: themeColors.border,
+              color: themeColors.text,
+              backgroundColor: themeColors.surface,
+            }}
+          >
+            <FaTimes className="text-[10px]" />
+            Back to Survey List
+          </button>
+
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div>
+              <h1
+                className="text-xl md:text-2xl font-bold tracking-tight flex items-center gap-2"
+                style={{ color: themeColors.text }}
+              >
+                <FaClipboardList />
+                User Survey Responses
+              </h1>
+              <p
+                className="text-sm mt-1 opacity-75"
+                style={{ color: themeColors.text }}
+              >
+                {selectedUser?.userName || selectedUser?.userCode} ke saare
+                responses is survey ke liye.
+              </p>
+
+              <div className="mt-2 text-[11px] space-y-0.5">
+                <p style={{ color: themeColors.text }}>
+                  <span className="font-semibold">User Code:</span>{" "}
+                  {selectedUser?.userCode}
+                  {selectedUser?.userMobile
+                    ? ` · ${selectedUser.userMobile}`
+                    : ""}
+                </p>
+                <p style={{ color: themeColors.text }}>
+                  <span className="font-semibold">Survey:</span>{" "}
+                  {selectedSurvey?.name}{" "}
+                  <span className="font-mono">
+                    ({selectedSurvey?.surveyCode})
+                  </span>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {content}
+      </div>
+    );
+  }
+
+  // ---------- LIST VIEW ----------
   return (
     <div className="relative space-y-6">
       {/* Header */}
@@ -161,8 +547,8 @@ export default function SurveyResponses() {
             className="text-sm mt-1 opacity-75"
             style={{ color: themeColors.text }}
           >
-            Dekho kaun-kaun se surveys pe kitne responses aaye aur kis user ne
-            kya answers diye.
+            Dekho kaun-kaun se surveys pe kitne responses aaye, kis user ne
+            diya, aur detail dekhne ke liye user pe click karo.
           </p>
         </div>
       </div>
@@ -341,7 +727,7 @@ export default function SurveyResponses() {
                           <button
                             key={u.userCode}
                             type="button"
-                            onClick={() => openUserModal(s, u)}
+                            onClick={() => openUserDetail(s, u)}
                             className="px-2.5 py-1 rounded-full border text-[11px] inline-flex items-center gap-1"
                             style={{
                               borderColor: themeColors.border,
@@ -385,286 +771,6 @@ export default function SurveyResponses() {
           </table>
         </div>
       </div>
-
-      {/* MODAL – user detailed responses */}
-      {modalOpen && (
-        <>
-          {/* overlay */}
-          <div
-            className="fixed inset-0 bg-black bg-opacity-40 z-40"
-            onClick={closeModal}
-          />
-
-          {/* modal box */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center px-2 sm:px-4">
-            <div
-              className="w-full max-w-5xl max-h-[90vh] rounded-2xl shadow-xl flex flex-col"
-              style={{
-                backgroundColor: themeColors.surface,
-                border: `1px solid ${themeColors.border}`,
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* header */}
-              <div
-                className="flex items-center justify-between px-4 sm:px-6 py-3 border-b"
-                style={{ borderColor: themeColors.border }}
-              >
-                <div>
-                  <p
-                    className="text-xs uppercase font-semibold opacity-70"
-                    style={{ color: themeColors.text }}
-                  >
-                    User Responses
-                  </p>
-                  <p
-                    className="text-sm sm:text-base font-semibold flex items-center gap-2"
-                    style={{ color: themeColors.text }}
-                  >
-                    <FaUser />
-                    {selectedUser?.userName || selectedUser?.userCode}
-                  </p>
-                  <p
-                    className="text-[11px] opacity-70"
-                    style={{ color: themeColors.text }}
-                  >
-                    {selectedUser?.userCode}
-                    {selectedUser?.userMobile
-                      ? ` · ${selectedUser.userMobile}`
-                      : ""}
-                  </p>
-                  {selectedSurvey && (
-                    <p
-                      className="text-[11px] mt-1"
-                      style={{ color: themeColors.text }}
-                    >
-                      Survey:{" "}
-                      <span className="font-semibold">
-                        {selectedSurvey.name}
-                      </span>{" "}
-                      ({selectedSurvey.surveyCode})
-                    </p>
-                  )}
-                </div>
-                <button
-                  onClick={closeModal}
-                  className="p-2 rounded-full border"
-                  style={{
-                    borderColor: themeColors.border,
-                    color: themeColors.text,
-                    backgroundColor: themeColors.background,
-                  }}
-                >
-                  <FaTimes />
-                </button>
-              </div>
-
-              {/* body */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-                {userLoading && (
-                  <div className="flex items-center justify-center py-6">
-                    <div className="text-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mx-auto" />
-                      <p
-                        className="mt-2 text-xs"
-                        style={{ color: themeColors.text }}
-                      >
-                        Loading user responses...
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {!userLoading && !userSurveyData && (
-                  <p
-                    className="text-sm opacity-75"
-                    style={{ color: themeColors.text }}
-                  >
-                    No data found.
-                  </p>
-                )}
-
-                {!userLoading && userSurveyData && (
-                  <>
-                    {(() => {
-                      const surveyItem =
-                        userSurveyData.surveys?.find(
-                          (sv) =>
-                            String(sv.surveyId) ===
-                              String(selectedSurvey?.surveyId) ||
-                            sv.surveyCode === selectedSurvey?.surveyCode
-                        ) || null;
-
-                      if (!surveyItem) {
-                        return (
-                          <p
-                            className="text-sm opacity-75"
-                            style={{ color: themeColors.text }}
-                          >
-                            Is user ne is survey ka koi response nahi diya (ya
-                            data migrate nahi hua).
-                          </p>
-                        );
-                      }
-
-                      if (
-                        !surveyItem.responses ||
-                        surveyItem.responses.length === 0
-                      ) {
-                        return (
-                          <p
-                            className="text-sm opacity-75"
-                            style={{ color: themeColors.text }}
-                          >
-                            Is survey ke liye is user ka koi response record
-                            nahi mila.
-                          </p>
-                        );
-                      }
-
-                      return (
-                        <div className="space-y-4">
-                          {surveyItem.responses.map((resp, idx) => (
-                            <div
-                              key={resp.responseId || idx}
-                              className="rounded-xl border p-3 sm:p-4 space-y-3"
-                              style={{
-                                borderColor: themeColors.border,
-                                backgroundColor: themeColors.background,
-                              }}
-                            >
-                              {/* Response header */}
-                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                <div>
-                                  <p
-                                    className="text-xs font-semibold"
-                                    style={{ color: themeColors.text }}
-                                  >
-                                    Response #
-                                    {surveyItem.responses.length - idx}
-                                  </p>
-                                  <p
-                                    className="text-[11px] opacity-70"
-                                    style={{ color: themeColors.text }}
-                                  >
-                                    {fmtDateTime(resp.createdAt)}
-                                  </p>
-                                  {resp.isCompleted === false && (
-                                    <p
-                                      className="text-[11px] opacity-70"
-                                      style={{ color: themeColors.danger }}
-                                    >
-                                      (Incomplete response)
-                                    </p>
-                                  )}
-                                </div>
-                                {resp.audioUrl && (
-                                  <a
-                                    href={resp.audioUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-[11px] font-semibold self-start sm:self-auto"
-                                    style={{
-                                      borderColor: themeColors.primary,
-                                      color: themeColors.primary,
-                                      backgroundColor: themeColors.surface,
-                                    }}
-                                  >
-                                    <FaHeadphones />
-                                    Listen Audio
-                                  </a>
-                                )}
-                              </div>
-
-                              <hr
-                                className="border-t my-1"
-                                style={{ borderColor: themeColors.border }}
-                              />
-
-                              {/* Q&A list */}
-                              <div className="mt-1 space-y-3">
-                                {(resp.answers || []).map((a, qIndex) => {
-                                  let answerText = "-";
-
-                                  if (a.questionType === "OPEN_ENDED") {
-                                    answerText = a.answerText || "-";
-                                  } else if (a.questionType === "RATING") {
-                                    answerText =
-                                      typeof a.rating === "number"
-                                        ? String(a.rating)
-                                        : "-";
-                                  } else {
-                                    const opts = a.selectedOptions || [];
-                                    answerText =
-                                      opts.length > 0 ? opts.join(", ") : "-";
-                                  }
-
-                                  return (
-                                    <div
-                                      key={a.questionId || qIndex}
-                                      className="rounded-lg border p-2.5 sm:p-3"
-                                      style={{
-                                        borderColor: themeColors.border,
-                                        backgroundColor: themeColors.surface,
-                                      }}
-                                    >
-                                      <div className="flex flex-col gap-1">
-                                        <p
-                                          className="text-xs font-semibold"
-                                          style={{ color: themeColors.text }}
-                                        >
-                                          Q{qIndex + 1}. {a.questionText}
-                                        </p>
-                                        <p
-                                          className="text-[11px] opacity-70"
-                                          style={{ color: themeColors.text }}
-                                        >
-                                          Type: {a.questionType}
-                                        </p>
-                                        <p
-                                          className="text-xs mt-1"
-                                          style={{ color: themeColors.text }}
-                                        >
-                                          <span className="font-semibold">
-                                            Answer:{" "}
-                                          </span>
-                                          {answerText}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </>
-                )}
-              </div>
-
-              {/* footer (optional) */}
-              <div
-                className="px-4 sm:px-6 py-3 border-t flex justify-end"
-                style={{ borderColor: themeColors.border }}
-              >
-                <button
-                  onClick={closeModal}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold border"
-                  style={{
-                    borderColor: themeColors.border,
-                    color: themeColors.text,
-                    backgroundColor: themeColors.surface,
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
     </div>
   );
 }
