@@ -47,6 +47,9 @@ export default function SurveyResponses() {
   const [userSurveyData, setUserSurveyData] = useState(null); // full payload from API
   const [responseFilter, setResponseFilter] = useState("ALL"); // ALL | APPROVED | NOT_APPROVED
 
+  // which response audio is currently open in detail screen
+  const [openAudioId, setOpenAudioId] = useState(null);
+
   const loadSummary = async () => {
     try {
       setLoading(true);
@@ -94,6 +97,7 @@ export default function SurveyResponses() {
     setSelectedUser(user);
     setUserSurveyData(null);
     setResponseFilter("ALL");
+    setOpenAudioId(null);
 
     try {
       setUserLoading(true);
@@ -116,6 +120,7 @@ export default function SurveyResponses() {
     setUserSurveyData(null);
     setUserLoading(false);
     setResponseFilter("ALL");
+    setOpenAudioId(null);
   };
 
   // ---- Loading & error for main ----
@@ -319,151 +324,172 @@ export default function SurveyResponses() {
               </p>
             )}
 
-            {filteredResponses.map((resp, idx) => (
-              <div
-                key={resp.responseId || idx}
-                className="rounded-2xl border p-3 sm:p-4 space-y-3"
-                style={{
-                  borderColor: themeColors.border,
-                  backgroundColor: themeColors.surface,
-                }}
-              >
-                {/* Response header */}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <div>
-                    <p
-                      className="text-xs font-semibold"
-                      style={{ color: themeColors.text }}
-                    >
-                      Response #{responses.length - idx}
-                    </p>
-                    <p
-                      className="text-[11px] opacity-70"
-                      style={{ color: themeColors.text }}
-                    >
-                      {fmtDateTime(resp.createdAt)}
-                    </p>
-                    {resp.isCompleted === false && (
-                      <p
-                        className="text-[11px] opacity-70"
-                        style={{ color: themeColors.danger }}
-                      >
-                        (Incomplete response)
-                      </p>
-                    )}
+            {filteredResponses.map((resp, idx) => {
+              const respKey = resp.responseId ?? `resp-${idx}`;
+              const isAudioOpen = openAudioId === respKey;
 
-                    {/* Approval info */}
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      {resp.isApproved ? (
-                        <span
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold"
-                          style={{
-                            backgroundColor: themeColors.success + "20",
-                            color: themeColors.success,
-                          }}
-                        >
-                          <FaCheckCircle />
-                          Approved
-                        </span>
-                      ) : (
-                        <span
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold"
-                          style={{
-                            backgroundColor: themeColors.danger + "20",
-                            color: themeColors.danger,
-                          }}
-                        >
-                          Not Approved
-                        </span>
-                      )}
-                      <span
+              return (
+                <div
+                  key={respKey}
+                  className="rounded-2xl border p-3 sm:p-4 space-y-3"
+                  style={{
+                    borderColor: themeColors.border,
+                    backgroundColor: themeColors.surface,
+                  }}
+                >
+                  {/* Response header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <p
+                        className="text-xs font-semibold"
+                        style={{ color: themeColors.text }}
+                      >
+                        Response #{responses.length - idx}
+                      </p>
+                      <p
                         className="text-[11px] opacity-70"
                         style={{ color: themeColors.text }}
                       >
-                        Approved By:{" "}
-                        <span className="font-mono">
-                          {resp.approvedBy ? String(resp.approvedBy) : "-"}
+                        {fmtDateTime(resp.createdAt)}
+                      </p>
+                      {resp.isCompleted === false && (
+                        <p
+                          className="text-[11px] opacity-70"
+                          style={{ color: themeColors.danger }}
+                        >
+                          (Incomplete response)
+                        </p>
+                      )}
+
+                      {/* Approval info */}
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        {resp.isApproved ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                            style={{
+                              backgroundColor: themeColors.success + "20",
+                              color: themeColors.success,
+                            }}
+                          >
+                            <FaCheckCircle />
+                            Approved
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+                            style={{
+                              backgroundColor: themeColors.danger + "20",
+                              color: themeColors.danger,
+                            }}
+                          >
+                            Not Approved
+                          </span>
+                        )}
+                        <span
+                          className="text-[11px] opacity-70"
+                          style={{ color: themeColors.text }}
+                        >
+                          Approved By:{" "}
+                          <span className="font-mono">
+                            {resp.approvedBy ? String(resp.approvedBy) : "-"}
+                          </span>
                         </span>
-                      </span>
+                      </div>
                     </div>
+
+                    {resp.audioUrl && (
+                      <div className="flex flex-col items-start sm:items-end gap-2 min-w-[220px]">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOpenAudioId((prev) =>
+                              prev === respKey ? null : respKey
+                            )
+                          }
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-[11px] font-semibold"
+                          style={{
+                            borderColor: themeColors.primary,
+                            color: themeColors.primary,
+                            backgroundColor: themeColors.background,
+                          }}
+                        >
+                          <FaHeadphones />
+                          {isAudioOpen ? "Hide Audio" : "Listen Audio"}
+                        </button>
+
+                        {isAudioOpen && (
+                          <audio
+                            controls
+                            autoPlay
+                            className="w-full"
+                            src={resp.audioUrl}
+                          >
+                            Your browser does not support the audio element.
+                          </audio>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  {resp.audioUrl && (
-                    <a
-                      href={resp.audioUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-[11px] font-semibold self-start sm:self-auto"
-                      style={{
-                        borderColor: themeColors.primary,
-                        color: themeColors.primary,
-                        backgroundColor: themeColors.background,
-                      }}
-                    >
-                      <FaHeadphones />
-                      Listen Audio
-                    </a>
-                  )}
-                </div>
+                  <hr
+                    className="border-t my-1"
+                    style={{ borderColor: themeColors.border }}
+                  />
 
-                <hr
-                  className="border-t my-1"
-                  style={{ borderColor: themeColors.border }}
-                />
+                  {/* Q&A list */}
+                  <div className="mt-1 space-y-3">
+                    {(resp.answers || []).map((a, qIndex) => {
+                      let answerText = "-";
 
-                {/* Q&A list */}
-                <div className="mt-1 space-y-3">
-                  {(resp.answers || []).map((a, qIndex) => {
-                    let answerText = "-";
+                      if (a.questionType === "OPEN_ENDED") {
+                        answerText = a.answerText || "-";
+                      } else if (a.questionType === "RATING") {
+                        answerText =
+                          typeof a.rating === "number"
+                            ? String(a.rating)
+                            : "-";
+                      } else {
+                        const opts = a.selectedOptions || [];
+                        answerText = opts.length > 0 ? opts.join(", ") : "-";
+                      }
 
-                    if (a.questionType === "OPEN_ENDED") {
-                      answerText = a.answerText || "-";
-                    } else if (a.questionType === "RATING") {
-                      answerText =
-                        typeof a.rating === "number"
-                          ? String(a.rating)
-                          : "-";
-                    } else {
-                      const opts = a.selectedOptions || [];
-                      answerText = opts.length > 0 ? opts.join(", ") : "-";
-                    }
-
-                    return (
-                      <div
-                        key={a.questionId || qIndex}
-                        className="rounded-lg border p-2.5 sm:p-3"
-                        style={{
-                          borderColor: themeColors.border,
-                          backgroundColor: themeColors.background,
-                        }}
-                      >
-                        <div className="flex flex-col gap-1">
-                          <p
-                            className="text-xs font-semibold"
-                            style={{ color: themeColors.text }}
-                          >
-                            Q{qIndex + 1}. {a.questionText}
-                          </p>
-                          <p
-                            className="text-[11px] opacity-70"
-                            style={{ color: themeColors.text }}
-                          >
-                            Type: {a.questionType}
-                          </p>
-                          <p
-                            className="text-xs mt-1"
-                            style={{ color: themeColors.text }}
-                          >
-                            <span className="font-semibold">Answer: </span>
-                            {answerText}
-                          </p>
+                      return (
+                        <div
+                          key={a.questionId || qIndex}
+                          className="rounded-lg border p-2.5 sm:p-3"
+                          style={{
+                            borderColor: themeColors.border,
+                            backgroundColor: themeColors.background,
+                          }}
+                        >
+                          <div className="flex flex-col gap-1">
+                            <p
+                              className="text-xs font-semibold"
+                              style={{ color: themeColors.text }}
+                            >
+                              Q{qIndex + 1}. {a.questionText}
+                            </p>
+                            <p
+                              className="text-[11px] opacity-70"
+                              style={{ color: themeColors.text }}
+                            >
+                              Type: {a.questionType}
+                            </p>
+                            <p
+                              className="text-xs mt-1"
+                              style={{ color: themeColors.text }}
+                            >
+                              <span className="font-semibold">Answer: </span>
+                              {answerText}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       );

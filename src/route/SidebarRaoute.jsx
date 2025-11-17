@@ -7,7 +7,8 @@ import {
   FaGavel,
   FaTachometerAlt,
   FaClipboardList,   // Survey icon
-  FaQuestionCircle, // Questions icon
+  FaQuestionCircle,  // Questions icon
+  FaChartBar,        // Charts icon
 } from "react-icons/fa";
 
 // Existing pages
@@ -18,6 +19,7 @@ const Users = lazy(() => import("../pages/Users"));
 const Surveys = lazy(() => import("../pages/Surveys"));
 const SurveyQuestions = lazy(() => import("../pages/SurveyQuestions"));
 const SurveyResponses = lazy(() => import("../pages/SurveyResponses"));
+const SurveyCharts = lazy(() => import("../pages/SurveyCharts")); // ⭐ charts page
 
 const routes = [
   { path: "/dashboard", component: Dashboard, name: "Dashboard", icon: FaTachometerAlt },
@@ -32,12 +34,20 @@ const routes = [
     icon: FaClipboardList,
   },
 
-    // ⭐ Survey responses dashboard
+  // ⭐ Survey responses dashboard
   {
     path: "/survey-responses",
     component: SurveyResponses,
     name: "Survey Responses",
     icon: FaUsers, // ya koi aur icon jo tumhe pasand ho
+  },
+
+  // ⭐ Survey charts / analytics page
+  {
+    path: "/survey-charts",
+    component: SurveyCharts,
+    name: "Survey Charts",
+    icon: FaChartBar,
   },
 
   // ⭐ Question builder route — HIDDEN from sidebar
@@ -48,8 +58,6 @@ const routes = [
     icon: FaQuestionCircle,
     hide: true, // ✅ sidebar me mat dikhana
   },
-
-
 ];
 
 export default routes;
