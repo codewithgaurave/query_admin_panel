@@ -11,6 +11,7 @@ import {
   FaUser,
   FaHeadphones,
   FaCheckCircle,
+  FaMapMarkerAlt, // ⭐ NEW
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -328,6 +329,12 @@ export default function SurveyResponses() {
               const respKey = resp.responseId ?? `resp-${idx}`;
               const isAudioOpen = openAudioId === respKey;
 
+              const hasLocation =
+                resp.latitude !== undefined &&
+                resp.latitude !== null &&
+                resp.longitude !== undefined &&
+                resp.longitude !== null;
+
               return (
                 <div
                   key={respKey}
@@ -395,8 +402,33 @@ export default function SurveyResponses() {
                           </span>
                         </span>
                       </div>
+
+                      {/* ⭐ Location chip (if present) */}
+                      {hasLocation && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const url = `https://www.google.com/maps?q=${resp.latitude},${resp.longitude}`;
+                            window.open(url, "_blank", "noopener,noreferrer");
+                          }}
+                          className="mt-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px]"
+                          style={{
+                            borderColor: themeColors.primary,
+                            color: themeColors.primary,
+                            backgroundColor: themeColors.background,
+                          }}
+                        >
+                          <FaMapMarkerAlt />
+                          View Location
+                          <span className="opacity-70">
+                            ({Number(resp.latitude).toFixed(4)},{" "}
+                            {Number(resp.longitude).toFixed(4)})
+                          </span>
+                        </button>
+                      )}
                     </div>
 
+                    {/* Audio controls */}
                     {resp.audioUrl && (
                       <div className="flex flex-col items-start sm:items-end gap-2 min-w-[220px]">
                         <button
