@@ -16,6 +16,7 @@ import {
   FaTrash,
   FaTable,
   FaThLarge,
+  FaKey, // 🔐 NEW ICON
 } from "react-icons/fa";
 import {
   listUsers,
@@ -24,6 +25,7 @@ import {
   blockUser,
   unblockUser,
   deleteUser,
+  resetUserPassword, // 🔐 NEW API
 } from "../apis/users";
 
 const ROLES = ["SURVEY_USER", "QUALITY_ENGINEER"];
@@ -74,6 +76,12 @@ export default function Users() {
   const [editingUser, setEditingUser] = useState(null);
   const [editData, setEditData] = useState({});
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // 🔐 reset password modal
+  const [resetUser, setResetUser] = useState(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   // block/unblock/delete loading
   const [actionId, setActionId] = useState(null);
@@ -270,6 +278,55 @@ export default function Users() {
       toast.error(msg);
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  // 🔐 RESET PASSWORD ----
+  const openResetModal = (user) => {
+    setResetUser(user);
+    setResetPasswordValue("");
+    setResetConfirmPassword("");
+  };
+
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    if (!resetUser) return;
+
+    if (!resetPasswordValue) {
+      toast.error("New password is required.");
+      return;
+    }
+    if (resetPasswordValue.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+    if (resetPasswordValue !== resetConfirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+
+    try {
+      setResetting(true);
+      const res = await resetUserPassword(resetUser._id, resetPasswordValue);
+      toast.success(res?.message || "User password reset successfully");
+      // optional: update user in local list, if backend returns it
+      if (res?.user) {
+        const updated = res.user;
+        setUsers((prev) =>
+          prev.map((u) => (u._id === updated._id ? { ...u, ...updated } : u))
+        );
+      }
+      setResetUser(null);
+      setResetPasswordValue("");
+      setResetConfirmPassword("");
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to reset password.";
+      toast.error(msg);
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -987,6 +1044,19 @@ export default function Users() {
                           {u.isActive ? <FaUserTimes /> : <FaUserCheck />}
                         </button>
 
+                        {/* 🔐 reset password */}
+                        <button
+                          onClick={() => openResetModal(u)}
+                          className="p-2 rounded-lg border text-xs"
+                          style={{
+                            borderColor: themeColors.border,
+                            color: themeColors.text,
+                          }}
+                          title="Reset password"
+                        >
+                          <FaKey />
+                        </button>
+
                         {/* edit */}
                         <button
                           onClick={() => openEditModal(u)}
@@ -1148,6 +1218,17 @@ export default function Users() {
                       title={u.isActive ? "Block user" : "Unblock user"}
                     >
                       {u.isActive ? <FaUserTimes /> : <FaUserCheck />}
+                    </button>
+                    <button
+                      onClick={() => openResetModal(u)}
+                      className="p-2 rounded-lg border text-xs"
+                      style={{
+                        borderColor: themeColors.border,
+                        color: themeColors.text,
+                      }}
+                      title="Reset password"
+                    >
+                      <FaKey />
                     </button>
                     <button
                       onClick={() => openEditModal(u)}
@@ -1457,6 +1538,99 @@ export default function Users() {
                   }}
                 >
                   {savingEdit ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🔐 Reset Password Modal */}
+      {resetUser && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+          onClick={() => !resetting && setResetUser(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border p-5 md:p-6 shadow-lg"
+            style={{
+              backgroundColor: themeColors.surface,
+              borderColor: themeColors.border,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              className="text-lg font-semibold mb-2 flex items-center gap-2"
+              style={{ color: themeColors.text }}
+            >
+              <FaKey />
+              Reset Password
+            </h2>
+            <p
+              className="text-xs mb-4 opacity-80"
+              style={{ color: themeColors.text }}
+            >
+              User: <span className="font-semibold">{resetUser.fullName}</span>{" "}
+              ({resetUser.userCode})
+            </p>
+            <form onSubmit={handleResetSubmit} className="space-y-3">
+              <div>
+                <label className="text-xs font-medium block mb-1">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  value={resetPasswordValue}
+                  onChange={(e) => setResetPasswordValue(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{
+                    borderColor: themeColors.border,
+                    backgroundColor: themeColors.background,
+                    color: themeColors.text,
+                  }}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  value={resetConfirmPassword}
+                  onChange={(e) => setResetConfirmPassword(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{
+                    borderColor: themeColors.border,
+                    backgroundColor: themeColors.background,
+                    color: themeColors.text,
+                  }}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={resetting}
+                  onClick={() => setResetUser(null)}
+                  className="px-4 py-2 rounded-lg border text-sm"
+                  style={{
+                    borderColor: themeColors.border,
+                    backgroundColor: themeColors.surface,
+                    color: themeColors.text,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetting}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2"
+                  style={{
+                    backgroundColor: themeColors.primary,
+                    color: themeColors.onPrimary,
+                    opacity: resetting ? 0.7 : 1,
+                  }}
+                >
+                  {resetting ? "Resetting..." : "Reset Password"}
                 </button>
               </div>
             </form>

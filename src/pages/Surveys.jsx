@@ -18,6 +18,7 @@ import {
   FaCheckCircle,
   FaEdit,
   FaTrash,
+  FaUser,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -26,6 +27,7 @@ import {
   updateSurvey,
   deleteSurvey,
 } from "../apis/surveys";
+import { listUsers } from "../apis/users"; // ✅ NEW – users list for assignment
 
 const SURVEY_STATUSES = ["DRAFT", "ACTIVE", "CLOSED"];
 
@@ -55,10 +57,15 @@ export default function Surveys() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // ✅ NEW: users for assignment
+  const [allUsers, setAllUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [usersError, setUsersError] = useState("");
+
   // filters
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [categoryFilter, setCategoryFilter] = useState("All");
+  const  [categoryFilter, setCategoryFilter] = useState("All");
 
   // create / edit survey
   const [createOpen, setCreateOpen] = useState(false);
@@ -80,11 +87,15 @@ export default function Surveys() {
     language: "hi",
     tags: "",
     allowedQuestionTypes: [],
+    // ✅ NEW: selected users for this survey
+    assignedUserIds: [],
   };
 
   const [newSurvey, setNewSurvey] = useState(emptySurveyForm);
 
-  // load surveys
+  // ---- LOADERS ----
+
+  // surveys
   const loadSurveys = async () => {
     try {
       setLoading(true);
@@ -103,8 +114,32 @@ export default function Surveys() {
     }
   };
 
+  // ✅ users (sirf SURVEY_USER / active use karenge assignment ke liye)
+  const loadUsers = async () => {
+    try {
+      setUsersLoading(true);
+      setUsersError("");
+      const res = await listUsers(); // { users }
+      const users = res.users || [];
+      const filtered = users.filter(
+        (u) => u.role === "SURVEY_USER" && u.isActive
+      );
+      setAllUsers(filtered);
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to load users for assignment.";
+      setUsersError(msg);
+      toast.error(msg);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSurveys();
+    loadUsers();
   }, []);
 
   // derived data
@@ -179,7 +214,8 @@ export default function Surveys() {
     ];
   }, [surveys]);
 
-  // handlers
+  // ---- HANDLERS ----
+
   const handleCreateChange = (field, value) => {
     setNewSurvey((prev) => ({ ...prev, [field]: value }));
   };
@@ -198,6 +234,23 @@ export default function Surveys() {
       return {
         ...prev,
         allowedQuestionTypes: [...prev.allowedQuestionTypes, type],
+      };
+    });
+  };
+
+  // ✅ NEW: toggle assigned user in state
+  const handleToggleAssignedUser = (userId) => {
+    setNewSurvey((prev) => {
+      const exists = prev.assignedUserIds.includes(userId);
+      if (exists) {
+        return {
+          ...prev,
+          assignedUserIds: prev.assignedUserIds.filter((id) => id !== userId),
+        };
+      }
+      return {
+        ...prev,
+        assignedUserIds: [...prev.assignedUserIds, userId],
       };
     });
   };
@@ -222,6 +275,12 @@ export default function Surveys() {
   const startEditSurvey = (survey) => {
     setEditingSurveyId(survey._id || survey.surveyCode);
     setCreateOpen(true);
+
+    // ✅ assignedUserIds ko pre-fill karo
+    const assignedIds = Array.isArray(survey.assignedUsers)
+      ? survey.assignedUsers.map((u) => u._id || u) // populate ho ya sirf IDs ho, dono handle
+      : [];
+
     setNewSurvey((prev) => ({
       ...prev,
       name: survey.name || "",
@@ -236,12 +295,17 @@ export default function Surveys() {
       endDate: survey.endDate
         ? new Date(survey.endDate).toISOString().slice(0, 10)
         : "",
-      // baaki fields (maxResponses, tags, etc.) ko edit UI me nahi dikha rahe
-      isAnonymousAllowed: false,
-      maxResponses: "",
-      language: "hi",
-      tags: "",
-      allowedQuestionTypes: [],
+      isAnonymousAllowed:
+        typeof survey.isAnonymousAllowed === "boolean"
+          ? survey.isAnonymousAllowed
+          : false,
+      maxResponses: survey.maxResponses || "",
+      language: survey.language || "hi",
+      tags: Array.isArray(survey.tags) ? survey.tags.join(", ") : "",
+      allowedQuestionTypes: Array.isArray(survey.allowedQuestionTypes)
+        ? survey.allowedQuestionTypes
+        : [],
+      assignedUserIds: assignedIds, // ✅
     }));
   };
 
@@ -308,6 +372,12 @@ export default function Surveys() {
             newSurvey.allowedQuestionTypes.length > 0
               ? newSurvey.allowedQuestionTypes
               : undefined,
+          // ✅ IMPORTANT: send assignedUserIds as array
+          assignedUserIds:
+            Array.isArray(newSurvey.assignedUserIds) &&
+            newSurvey.assignedUserIds.length > 0
+              ? newSurvey.assignedUserIds
+              : [],
         };
 
         const res = await createSurvey(payload);
@@ -320,7 +390,7 @@ export default function Surveys() {
         resetForm();
         setCreateOpen(false);
       } else {
-        // UPDATE — abhi basic fields hi update kar rahe hain
+        // UPDATE
         const payload = {
           name: newSurvey.name,
           description: newSurvey.description || undefined,
@@ -330,7 +400,13 @@ export default function Surveys() {
           status: newSurvey.status || "DRAFT",
           startDate: newSurvey.startDate || undefined,
           endDate: newSurvey.endDate || undefined,
-          // NOTE: yahan maxResponses / tags / language intentionally nahi bhej rahe
+          // (optional) agar edit me bhi maxResponses etc update karna chaho, yahan add kar sakte ho
+          // yahan ham assignment ko full replace kar rahe hain:
+          assignedUserIds:
+            Array.isArray(newSurvey.assignedUserIds) &&
+            newSurvey.assignedUserIds.length > 0
+              ? newSurvey.assignedUserIds
+              : [],
         };
 
         const res = await updateSurvey(editingSurveyId, payload);
@@ -763,6 +839,72 @@ export default function Surveys() {
               </>
             )}
 
+            {/* ✅ ASSIGN USERS SECTION (CREATE + EDIT dono me) */}
+            <div className="md:col-span-2 lg:col-span-3">
+              <label className="text-xs font-medium block mb-2 flex items-center gap-1">
+                <FaUser />
+                Assign to Employees (Survey Users)
+              </label>
+
+              {usersLoading ? (
+                <p
+                  className="text-xs"
+                  style={{ color: themeColors.text }}
+                >
+                  Loading users...
+                </p>
+              ) : usersError ? (
+                <p
+                  className="text-xs"
+                  style={{ color: themeColors.danger }}
+                >
+                  {usersError}
+                </p>
+              ) : allUsers.length === 0 ? (
+                <p
+                  className="text-xs"
+                  style={{ color: themeColors.text }}
+                >
+                  No active SURVEY_USER found to assign.
+                </p>
+              ) : (
+                <div className="max-h-48 overflow-auto border rounded-lg p-2 space-y-1"
+                  style={{ borderColor: themeColors.border }}
+                >
+                  {allUsers.map((u) => {
+                    const checked = newSurvey.assignedUserIds.includes(u._id);
+                    return (
+                      <label
+                        key={u._id}
+                        className="flex items-center gap-2 text-xs cursor-pointer px-2 py-1 rounded-md hover:bg-black/5"
+                        style={{ color: themeColors.text }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => handleToggleAssignedUser(u._id)}
+                          className="w-4 h-4"
+                        />
+                        <span className="font-medium">{u.fullName}</span>
+                        <span className="opacity-70">
+                          ({u.userCode || u.mobile})
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              <p
+                className="mt-1 text-[11px] opacity-70"
+                style={{ color: themeColors.text }}
+              >
+                Only selected employees will see this survey in the mobile app.
+                If you select none, this survey will not appear for any survey
+                user (unless you later assign).
+              </p>
+            </div>
+
             {/* Submit button */}
             <div className="md:col-span-2 lg:col-span-3 mt-2 flex justify-end gap-2">
               {isEditing && (
@@ -990,6 +1132,17 @@ export default function Surveys() {
                         {s.description}
                       </div>
                     )}
+                    {/* OPTIONAL: show assigned count */}
+                    {Array.isArray(s.assignedUsers) &&
+                      s.assignedUsers.length > 0 && (
+                        <div
+                          className="text-[11px] opacity-70 mt-1"
+                          style={{ color: themeColors.text }}
+                        >
+                          Assigned to {s.assignedUsers.length} user
+                          {s.assignedUsers.length > 1 ? "s" : ""}
+                        </div>
+                      )}
                   </td>
                   <td
                     className="px-4 py-3 text-xs"

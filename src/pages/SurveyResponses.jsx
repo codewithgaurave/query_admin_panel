@@ -11,7 +11,8 @@ import {
   FaUser,
   FaHeadphones,
   FaCheckCircle,
-  FaMapMarkerAlt, // ⭐ NEW
+  FaMapMarkerAlt, // ⭐ location
+  FaFileExcel, // ⭐ for export button
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -32,6 +33,25 @@ const fmtDateTime = (d) => {
   }
 };
 
+// Helper: CSV-safe value
+const csvEscape = (val) =>
+  `"${String(val ?? "")
+    .replace(/"/g, '""')
+    .trim()}"`;
+
+// Helper: build answer text like in UI
+const buildAnswerText = (ans) => {
+  if (!ans) return "-";
+  if (ans.questionType === "OPEN_ENDED") {
+    return ans.answerText || "-";
+  }
+  if (ans.questionType === "RATING") {
+    return typeof ans.rating === "number" ? String(ans.rating) : "-";
+  }
+  const opts = ans.selectedOptions || [];
+  return opts.length > 0 ? opts.join(", ") : "-";
+};
+
 export default function SurveyResponses() {
   const { themeColors } = useTheme();
 
@@ -50,6 +70,9 @@ export default function SurveyResponses() {
 
   // which response audio is currently open in detail screen
   const [openAudioId, setOpenAudioId] = useState(null);
+
+  // ⭐ track which survey is being exported
+  const [exportingSurveyId, setExportingSurveyId] = useState(null);
 
   const loadSummary = async () => {
     try {
@@ -122,6 +145,164 @@ export default function SurveyResponses() {
     setUserLoading(false);
     setResponseFilter("ALL");
     setOpenAudioId(null);
+  };
+
+  // ⭐ NEW: export all responses (all users) for a single survey
+  const handleExportSurvey = async (surveySummaryItem) => {
+    if (!surveySummaryItem) return;
+
+    const users = surveySummaryItem.users || [];
+    if (users.length === 0) {
+      toast.error("Is survey ke liye koi user data nahi mila.");
+      return;
+    }
+
+    try {
+      setExportingSurveyId(surveySummaryItem.surveyId);
+      toast.info("Export prepare ho raha hai, please wait...");
+
+      const rows = [];
+
+      // Meta info on top
+      rows.push(["Survey Responses Export"]);
+      rows.push(["Survey ID", surveySummaryItem.surveyId]);
+      rows.push(["Survey Code", surveySummaryItem.surveyCode || "-"]);
+      rows.push(["Survey Name", surveySummaryItem.name || "-"]);
+      rows.push([]); // blank line
+
+      // ---- 1st PASS: collect all responses + unique questions ----
+      const allRecords = []; // { user, resp, answersMap }
+      const questionOrder = []; // to keep column order stable
+      const questionSet = new Set();
+
+      for (const user of users) {
+        try {
+          const res = await getUserSurveySummary(user.userCode);
+          const data = res || {};
+
+          const surveyItem =
+            data.surveys?.find(
+              (sv) =>
+                String(sv.surveyId) === String(surveySummaryItem.surveyId) ||
+                sv.surveyCode === surveySummaryItem.surveyCode
+            ) || null;
+
+          if (!surveyItem || !surveyItem.responses?.length) {
+            continue;
+          }
+
+          (surveyItem.responses || []).forEach((resp) => {
+            const answers = resp.answers || [];
+            const answersMap = {};
+
+            answers.forEach((a) => {
+              const qText = a.questionText || "";
+              if (!qText) return;
+              const ansText = buildAnswerText(a);
+
+              if (!questionSet.has(qText)) {
+                questionSet.add(qText);
+                questionOrder.push(qText);
+              }
+
+              answersMap[qText] = ansText;
+            });
+
+            allRecords.push({ user, resp, answersMap });
+          });
+        } catch (err) {
+          console.error("Error fetching user survey summary for export", err);
+        }
+      }
+
+      if (allRecords.length === 0) {
+        toast.error(
+          "Is survey ke liye export karne layak koi response nahi mila."
+        );
+        setExportingSurveyId(null);
+        return;
+      }
+
+      // ---- HEADER ROW (meta columns + per-question columns) ----
+      const questionHeaders = questionOrder;
+      rows.push([
+        "Sample ID",
+        "Timestamp",
+        "Location",
+        "Address",
+        "Audio Url",
+        "Surveyor Name",
+        "Surveyor Phone Number",
+        "Is Approved",
+        "Approved By",
+        "Is Completed",
+        ...questionHeaders,
+      ]);
+
+      // ---- DATA ROWS ----
+      allRecords.forEach(({ user, resp, answersMap }) => {
+        const lat =
+          resp.latitude !== undefined && resp.latitude !== null
+            ? Number(resp.latitude)
+            : null;
+        const lng =
+          resp.longitude !== undefined && resp.longitude !== null
+            ? Number(resp.longitude)
+            : null;
+
+        const hasLocation =
+          lat !== null && !Number.isNaN(lat) && lng !== null && !Number.isNaN(lng);
+
+        const locationStr = hasLocation ? `(${lat}, ${lng})` : "";
+
+        const row = [
+          resp.responseId ?? "",
+          resp.createdAt ?? "",
+          locationStr,
+          resp.address ?? "", // agar backend me ho to yaha aa jayega
+          resp.audioUrl ?? "",
+          user.userName || user.userCode || "",
+          user.userMobile || "",
+          resp.isApproved ? "YES" : "NO",
+          resp.approvedBy ?? "",
+          resp.isCompleted === false ? "NO" : "YES",
+          // question-wise answers
+          ...questionHeaders.map((qh) => answersMap[qh] ?? ""),
+        ];
+
+        rows.push(row);
+      });
+
+      const csvContent = rows
+        .map((row) => row.map(csvEscape).join(","))
+        .join("\r\n");
+
+      const blob = new Blob(["\uFEFF" + csvContent], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const safeName =
+        (surveySummaryItem.name || "survey")
+          .replace(/[^\w\-]+/g, "_")
+          .substring(0, 80) + "_responses_export.csv";
+      link.href = url;
+      link.setAttribute("download", safeName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success("Survey responses CSV export ho gaya.");
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to export survey data.";
+      toast.error(msg);
+    } finally {
+      setExportingSurveyId(null);
+    }
   };
 
   // ---- Loading & error for main ----
@@ -403,7 +584,7 @@ export default function SurveyResponses() {
                         </span>
                       </div>
 
-                      {/* ⭐ Location chip (if present) */}
+                      {/* Location chip (if present) */}
                       {hasLocation && (
                         <button
                           type="button"
@@ -471,19 +652,7 @@ export default function SurveyResponses() {
                   {/* Q&A list */}
                   <div className="mt-1 space-y-3">
                     {(resp.answers || []).map((a, qIndex) => {
-                      let answerText = "-";
-
-                      if (a.questionType === "OPEN_ENDED") {
-                        answerText = a.answerText || "-";
-                      } else if (a.questionType === "RATING") {
-                        answerText =
-                          typeof a.rating === "number"
-                            ? String(a.rating)
-                            : "-";
-                      } else {
-                        const opts = a.selectedOptions || [];
-                        answerText = opts.length > 0 ? opts.join(", ") : "-";
-                      }
+                      const answerText = buildAnswerText(a);
 
                       return (
                         <div
@@ -605,8 +774,9 @@ export default function SurveyResponses() {
             className="text-sm mt-1 opacity-75"
             style={{ color: themeColors.text }}
           >
-            Dekho kaun-kaun se surveys pe kitne responses aaye, kis user ne
-            diya, aur detail dekhne ke liye user pe click karo.
+            Dekho kaun-kaun se surveys pe kitne responses aaye, kis user ne diya,
+            aur detail dekhne ke liye user pe click karo. Ab har survey ka full
+            CSV export bhi available hai.
           </p>
         </div>
       </div>
@@ -684,6 +854,7 @@ export default function SurveyResponses() {
                   "Total Responses",
                   "Users",
                   "Last Response",
+                  "Export",
                 ].map((head) => (
                   <th
                     key={head}
@@ -811,13 +982,33 @@ export default function SurveyResponses() {
                   >
                     {fmtDateTime(s.lastResponseAt)}
                   </td>
+
+                  {/* Export button */}
+                  <td className="px-4 py-3 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => handleExportSurvey(s)}
+                      disabled={exportingSurveyId === s.surveyId}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-[11px] font-semibold disabled:opacity-60"
+                      style={{
+                        borderColor: themeColors.primary,
+                        backgroundColor: themeColors.surface,
+                        color: themeColors.primary,
+                      }}
+                    >
+                      <FaFileExcel />
+                      {exportingSurveyId === s.surveyId
+                        ? "Exporting..."
+                        : "Export CSV"}
+                    </button>
+                  </td>
                 </tr>
               ))}
 
               {filteredSummary.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="px-4 py-8 text-center text-sm"
                     style={{ color: themeColors.text }}
                   >

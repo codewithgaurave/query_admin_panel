@@ -62,12 +62,10 @@ export const updateUser = async (id, payload) => {
   return data;
 };
 
-// src/apis/users.js
-
 export const blockUser = async (id) => {
   const { data } = await http.patch(
     `/user/${id}/block`,
-    {}, // <- null ki jagah empty object bhejna safer hai
+    {}, // safer to send empty object
     {
       headers: authHeaders(),
     }
@@ -78,7 +76,7 @@ export const blockUser = async (id) => {
 export const unblockUser = async (id) => {
   const { data } = await http.patch(
     `/user/${id}/unblock`,
-    {}, // <- yaha bhi
+    {}, // empty object
     {
       headers: authHeaders(),
     }
@@ -86,6 +84,21 @@ export const unblockUser = async (id) => {
   return data;
 };
 
+/**
+ * 🔐 PATCH /user/:id/reset-password
+ * body: { password: string }
+ */
+export const resetUserPassword = async (id, password) => {
+  const { data } = await http.patch(
+    `/user/${id}/reset-password`,
+    { password },
+    {
+      headers: authHeaders(),
+    }
+  );
+  // backend: { message, user }
+  return data;
+};
 
 /**
  * DELETE /user/:id

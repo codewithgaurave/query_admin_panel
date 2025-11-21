@@ -8,10 +8,6 @@ const authHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-/**
- * POST /survey/create
- * Admin creates a survey
- */
 export const createSurvey = async (payload) => {
   const { data } = await http.post("/survey/create", payload, {
     headers: {
@@ -19,14 +15,9 @@ export const createSurvey = async (payload) => {
       ...authHeaders(),
     },
   });
-  // backend: { message, survey }
   return data;
 };
 
-/**
- * PUT /survey/:surveyIdOrCode
- * Admin updates a survey
- */
 export const updateSurvey = async (surveyIdOrCode, payload) => {
   const { data } = await http.put(`/survey/${surveyIdOrCode}`, payload, {
     headers: {
@@ -34,7 +25,6 @@ export const updateSurvey = async (surveyIdOrCode, payload) => {
       ...authHeaders(),
     },
   });
-  // backend: { message, survey }
   return data;
 };
 
@@ -53,6 +43,7 @@ export const deleteSurvey = async (surveyIdOrCode) => {
 /**
  * GET /survey/list
  * Admin: list all surveys
+ * backend: survey me ab assignedUsers bhi aayega (populate)
  */
 export const listSurveys = async () => {
   const { data } = await http.get("/survey/list", {
@@ -123,7 +114,9 @@ export const deleteSurveyQuestion = async (questionId) => {
 
 /**
  * GET /survey/public/list
- * Public: list ACTIVE or by status
+ * Public / SURVEY_USER app:
+ *  - by default ACTIVE + isActive true
+ *  - optional ?userCode=USR-XXXX => sirf usko assigned (ya global) surveys
  */
 export const listPublicSurveys = async (params = {}) => {
   const { data } = await http.get("/survey/public/list", {

@@ -8,9 +8,15 @@ import {
   FaRegClock,
   FaStopCircle,
   FaChartBar,
+  FaFileExcel,
+  FaFilePdf,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import { listAllPublicSurveyResponses } from "../apis/surveyPublic";
+
+// PDF libs
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 // Chart.js imports
 import {
@@ -38,7 +44,7 @@ ChartJS.register(
 const fmtPercent = (v) => `${v.toFixed(2)} %`;
 
 // ---------- per-question chart component ----------
-function QuestionChart({ qStat, themeColors }) {
+function QuestionChart({ qStat, themeColors, index, onExportQuestionCSV }) {
   const { questionText, total, options } = qStat;
   const [chartType, setChartType] = useState("bar"); // "bar" | "pie"
 
@@ -140,7 +146,7 @@ function QuestionChart({ qStat, themeColors }) {
         backgroundColor: themeColors.surface,
       }}
     >
-      {/* Question heading + chart type toggle */}
+      {/* Question heading + chart type toggle + per-question export */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-start gap-3">
           <span className="mt-1 text-base">☑</span>
@@ -161,49 +167,66 @@ function QuestionChart({ qStat, themeColors }) {
           </div>
         </div>
 
-        <div className="inline-flex items-center text-xs md:text-sm gap-2">
-          <span style={{ color: themeColors.text }} className="opacity-80">
-            Chart Type:
-          </span>
-          <div
-            className="inline-flex rounded-full border p-0.5 bg-black/5"
-            style={{ borderColor: themeColors.border }}
-          >
-            <button
-              type="button"
-              onClick={() => setChartType("bar")}
-              className={`px-3 py-1.5 rounded-full transition-all ${
-                chartType === "bar"
-                  ? "text-sm font-semibold shadow-sm"
-                  : "text-xs"
-              }`}
-              style={{
-                backgroundColor:
-                  chartType === "bar" ? themeColors.primary : "transparent",
-                color:
-                  chartType === "bar" ? "#ffffff" : themeColors.text,
-              }}
+        <div className="flex flex-col items-end gap-2">
+          <div className="inline-flex items-center text-xs md:text-sm gap-2">
+            <span style={{ color: themeColors.text }} className="opacity-80">
+              Chart Type:
+            </span>
+            <div
+              className="inline-flex rounded-full border p-0.5 bg-black/5"
+              style={{ borderColor: themeColors.border }}
             >
-              Bar
-            </button>
-            <button
-              type="button"
-              onClick={() => setChartType("pie")}
-              className={`px-3 py-1.5 rounded-full transition-all ${
-                chartType === "pie"
-                  ? "text-sm font-semibold shadow-sm"
-                  : "text-xs"
-              }`}
-              style={{
-                backgroundColor:
-                  chartType === "pie" ? themeColors.primary : "transparent",
-                color:
-                  chartType === "pie" ? "#ffffff" : themeColors.text,
-              }}
-            >
-              Pie
-            </button>
+              <button
+                type="button"
+                onClick={() => setChartType("bar")}
+                className={`px-3 py-1.5 rounded-full transition-all ${
+                  chartType === "bar"
+                    ? "text-sm font-semibold shadow-sm"
+                    : "text-xs"
+                }`}
+                style={{
+                  backgroundColor:
+                    chartType === "bar" ? themeColors.primary : "transparent",
+                  color:
+                    chartType === "bar" ? "#ffffff" : themeColors.text,
+                }}
+              >
+                Bar
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartType("pie")}
+                className={`px-3 py-1.5 rounded-full transition-all ${
+                  chartType === "pie"
+                    ? "text-sm font-semibold shadow-sm"
+                    : "text-xs"
+                }`}
+                style={{
+                  backgroundColor:
+                    chartType === "pie" ? themeColors.primary : "transparent",
+                  color:
+                    chartType === "pie" ? "#ffffff" : themeColors.text,
+                }}
+              >
+                Pie
+              </button>
+            </div>
           </div>
+
+          {/* NEW: per-question CSV export */}
+          <button
+            type="button"
+            onClick={onExportQuestionCSV}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-semibold border transition-all"
+            style={{
+              borderColor: themeColors.primary,
+              color: themeColors.primary,
+              backgroundColor: themeColors.primary + "10",
+            }}
+          >
+            <FaFileExcel />
+            Export Question (CSV)
+          </button>
         </div>
       </div>
 
@@ -397,13 +420,194 @@ export default function SurveyCharts() {
     [activeSurvey]
   );
 
+  // --------- EXPORT HELPERS (EXCEL/CSV + PDF) ----------
+
+  const handleExportCSV = () => {
+    if (!activeSurvey) return;
+
+    const rows = [];
+
+    // Header info
+    rows.push(["Survey Analytics"]);
+    rows.push(["Survey Name", activeSurvey.name || "Untitled Survey"]);
+    rows.push(["Survey Code", activeSurvey.surveyCode || "-"]);
+    rows.push([
+      "Total Responses",
+      activeSurvey.responses?.length ??
+        activeSurvey.totalResponses ??
+        0,
+    ]);
+    rows.push([]); // empty line
+
+    // Per-question data
+    questionStats.forEach((q, idx) => {
+      rows.push([`Q${idx + 1}: ${q.questionText}`]);
+      rows.push(["Option", "Responses", "Percent"]);
+      q.options.forEach((opt) => {
+        rows.push([
+          opt.label || "–",
+          opt.count,
+          `${opt.percent.toFixed(2)} %`,
+        ]);
+      });
+      rows.push(["Total", q.total, "100.00 %"]);
+      rows.push([]);
+    });
+
+    const csvContent = rows
+      .map((row) =>
+        row
+          .map((val) =>
+            `"${String(val ?? "")
+              .replace(/"/g, '""')
+              .trim()}"`
+          )
+          .join(",")
+      )
+      .join("\r\n");
+
+    // IMPORTANT: add UTF-8 BOM so Excel properly shows Hindi text
+    const blob = new Blob(["\uFEFF" + csvContent], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const safeName =
+      (activeSurvey.name || "survey").replace(/[^\w\-]+/g, "_") +
+      "_analytics.csv";
+    link.href = url;
+    link.setAttribute("download", safeName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // NEW: per-question CSV export (individual question data)
+  const handleExportQuestionCSV = (q, index) => {
+    if (!activeSurvey || !q) return;
+
+    const rows = [];
+
+    rows.push(["Survey Analytics - Single Question"]);
+    rows.push(["Survey Name", activeSurvey.name || "Untitled Survey"]);
+    rows.push(["Survey Code", activeSurvey.surveyCode || "-"]);
+    rows.push([]);
+    rows.push([`Q${index + 1}: ${q.questionText}`]);
+    rows.push(["Option", "Responses", "Percent"]);
+
+    q.options.forEach((opt) => {
+      rows.push([
+        opt.label || "–",
+        opt.count,
+        `${opt.percent.toFixed(2)} %`,
+      ]);
+    });
+
+    rows.push(["Total", q.total, "100.00 %"]);
+
+    const csvContent = rows
+      .map((row) =>
+        row
+          .map((val) =>
+            `"${String(val ?? "")
+              .replace(/"/g, '""')
+              .trim()}"`
+          )
+          .join(",")
+      )
+      .join("\r\n");
+
+    // Again, add UTF-8 BOM for Hindi text in Excel
+    const blob = new Blob(["\uFEFF" + csvContent], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const safeSurveyName =
+      (activeSurvey.name || "survey").replace(/[^\w\-]+/g, "_");
+    const safeName = `${safeSurveyName}_Q${index + 1}_analytics.csv`;
+    link.href = url;
+    link.setAttribute("download", safeName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportPDF = () => {
+    if (!activeSurvey) return;
+
+    const doc = new jsPDF();
+
+    const surveyName = activeSurvey.name || "Untitled Survey";
+    const surveyCode = activeSurvey.surveyCode || "-";
+    const totalResp =
+      activeSurvey.responses?.length ??
+      activeSurvey.totalResponses ??
+      0;
+
+    doc.setFontSize(14);
+    doc.text("Survey Analytics", 14, 16);
+    doc.setFontSize(11);
+    doc.text(`Survey: ${surveyName}`, 14, 24);
+    doc.text(`Code: ${surveyCode}`, 14, 30);
+    doc.text(`Total Responses: ${totalResp}`, 14, 36);
+
+    let startY = 44;
+
+    questionStats.forEach((q, index) => {
+      // Question title
+      autoTable(doc, {
+        startY,
+        head: [[`Q${index + 1}: ${q.questionText}`]],
+        body: [],
+        theme: "plain",
+        styles: { fontStyle: "bold" },
+        headStyles: { fillColor: [255, 255, 255] },
+      });
+
+      startY = doc.lastAutoTable.finalY + 2;
+
+      // Options table
+      autoTable(doc, {
+        startY,
+        head: [["Option", "Responses", "Percent"]],
+        body: [
+          ...q.options.map((opt) => [
+            opt.label || "–",
+            opt.count,
+            `${opt.percent.toFixed(2)} %`,
+          ]),
+          ["Total", q.total, "100.00 %"],
+        ],
+        theme: "striped",
+      });
+
+      startY = doc.lastAutoTable.finalY + 8;
+
+      // New page if needed
+      if (index !== questionStats.length - 1 && startY > 250) {
+        doc.addPage();
+        startY = 20;
+      }
+    });
+
+    const safeName =
+      surveyName.replace(/[^\w\-]+/g, "_") + "_analytics.pdf";
+    doc.save(safeName);
+  };
+
   // ---------- STATES: loading & error ----------
   if (loading) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto" />
-          <p className="mt-4 text-sm md:text-base" style={{ color: themeColors.text }}>
+          <p
+            className="mt-4 text-sm md:text-base"
+            style={{ color: themeColors.text }}
+          >
             Loading survey charts...
           </p>
         </div>
@@ -443,7 +647,9 @@ export default function SurveyCharts() {
             style={{ color: themeColors.text }}
           >
             Yahan se har survey ke questions ka overall analysis dekho – bar /
-            pie chart, counts aur percentage ke saath.
+            pie chart, counts aur percentage ke saath. Saath me Excel / PDF
+            export bhi available hai. Ab indivisual question ka bhi CSV export
+            kar sakte ho.
           </p>
         </div>
       </div>
@@ -510,7 +716,9 @@ export default function SurveyCharts() {
                       ? themeColors.primary + "20"
                       : themeColors.background,
                     color: themeColors.text,
-                    boxShadow: isActive ? "0 4px 10px rgba(0,0,0,0.08)" : "none",
+                    boxShadow: isActive
+                      ? "0 4px 10px rgba(0,0,0,0.08)"
+                      : "none",
                   }}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -578,88 +786,126 @@ export default function SurveyCharts() {
             <>
               {/* Active survey header summary */}
               <div
-                className="rounded-2xl border p-4 md:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-sm"
+                className="rounded-2xl border p-4 md:p-5 flex flex-col gap-4 shadow-sm"
                 style={{
                   backgroundColor: themeColors.surface,
                   borderColor: themeColors.border,
                 }}
               >
-                <div>
-                  <p
-                    className="text-xs md:text-sm uppercase font-semibold opacity-70"
-                    style={{ color: themeColors.text }}
-                  >
-                    Selected Survey
-                  </p>
-                  <h2
-                    className="text-base md:text-lg font-semibold mt-1 flex items-center gap-2"
-                    style={{ color: themeColors.text }}
-                  >
-                    <FaClipboardList />
-                    {activeSurvey.name || "Untitled Survey"}
-                  </h2>
-                  <p
-                    className="text-xs md:text-sm mt-1 opacity-80"
-                    style={{ color: themeColors.text }}
-                  >
-                    Code:{" "}
-                    <span className="font-mono">
-                      {activeSurvey.surveyCode}
-                    </span>
-                    {activeSurvey.projectName && ` · ${activeSurvey.projectName}`}
-                    {activeSurvey.category && ` · ${activeSurvey.category}`}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-4 text-xs md:text-sm">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                   <div>
                     <p
-                      className="text-[11px] md:text-xs opacity-70"
+                      className="text-xs md:text-sm uppercase font-semibold opacity-70"
                       style={{ color: themeColors.text }}
                     >
-                      Total Responses
+                      Selected Survey
                     </p>
-                    <p
-                      className="text-xl md:text-2xl font-bold"
-                      style={{ color: themeColors.primary }}
+                    <h2
+                      className="text-base md:text-lg font-semibold mt-1 flex items-center gap-2"
+                      style={{ color: themeColors.text }}
                     >
-                      {activeSurvey.responses?.length ??
-                        activeSurvey.totalResponses ??
-                        0}
+                      <FaClipboardList />
+                      {activeSurvey.name || "Untitled Survey"}
+                    </h2>
+                    <p
+                      className="text-xs md:text-sm mt-1 opacity-80"
+                      style={{ color: themeColors.text }}
+                    >
+                      Code:{" "}
+                      <span className="font-mono">
+                        {activeSurvey.surveyCode}
+                      </span>
+                      {activeSurvey.projectName &&
+                        ` · ${activeSurvey.projectName}`}
+                      {activeSurvey.category &&
+                        ` · ${activeSurvey.category}`}
                     </p>
                   </div>
-                  {activeSurvey.status && (
+
+                  <div className="flex flex-wrap gap-4 text-xs md:text-sm">
                     <div>
                       <p
                         className="text-[11px] md:text-xs opacity-70"
                         style={{ color: themeColors.text }}
                       >
-                        Status
+                        Total Responses
                       </p>
-                      <span
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold"
-                        style={{
-                          backgroundColor:
-                            activeSurvey.status === "ACTIVE"
-                              ? themeColors.success + "25"
-                              : activeSurvey.status === "DRAFT"
-                              ? themeColors.primary + "20"
-                              : themeColors.danger + "20",
-                          color:
-                            activeSurvey.status === "ACTIVE"
-                              ? themeColors.success
-                              : activeSurvey.status === "DRAFT"
-                              ? themeColors.primary
-                              : themeColors.danger,
-                        }}
+                      <p
+                        className="text-xl md:text-2xl font-bold"
+                        style={{ color: themeColors.primary }}
                       >
-                        {activeSurvey.status === "ACTIVE" && <FaPlay />}
-                        {activeSurvey.status === "DRAFT" && <FaRegClock />}
-                        {activeSurvey.status === "CLOSED" && <FaStopCircle />}
-                        {activeSurvey.status}
-                      </span>
+                        {activeSurvey.responses?.length ??
+                          activeSurvey.totalResponses ??
+                          0}
+                      </p>
                     </div>
-                  )}
+                    {activeSurvey.status && (
+                      <div>
+                        <p
+                          className="text-[11px] md:text-xs opacity-70"
+                          style={{ color: themeColors.text }}
+                        >
+                          Status
+                        </p>
+                        <span
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs md:text-sm font-semibold"
+                          style={{
+                            backgroundColor:
+                              activeSurvey.status === "ACTIVE"
+                                ? themeColors.success + "25"
+                                : activeSurvey.status === "DRAFT"
+                                ? themeColors.primary + "20"
+                                : themeColors.danger + "20",
+                            color:
+                              activeSurvey.status === "ACTIVE"
+                                ? themeColors.success
+                                : activeSurvey.status === "DRAFT"
+                                ? themeColors.primary
+                                : themeColors.danger,
+                          }}
+                        >
+                          {activeSurvey.status === "ACTIVE" && <FaPlay />}
+                          {activeSurvey.status === "DRAFT" && (
+                            <FaRegClock />
+                          )}
+                          {activeSurvey.status === "CLOSED" && (
+                            <FaStopCircle />
+                          )}
+                          {activeSurvey.status}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Export buttons */}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleExportCSV}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs md:text-sm font-semibold border transition-all"
+                    style={{
+                      borderColor: themeColors.primary,
+                      color: themeColors.primary,
+                      backgroundColor: themeColors.primary + "10",
+                    }}
+                  >
+                    <FaFileExcel />
+                    Export Excel (CSV)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportPDF}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs md:text-sm font-semibold border transition-all"
+                    style={{
+                      borderColor: themeColors.text,
+                      color: themeColors.text,
+                      backgroundColor: "transparent",
+                    }}
+                  >
+                    <FaFilePdf />
+                    Export PDF
+                  </button>
                 </div>
               </div>
 
@@ -674,11 +920,15 @@ export default function SurveyCharts() {
                 </p>
               )}
 
-              {questionStats.map((q) => (
+              {questionStats.map((q, idx) => (
                 <QuestionChart
                   key={q.questionId || q.questionText}
                   qStat={q}
                   themeColors={themeColors}
+                  index={idx}
+                  onExportQuestionCSV={() =>
+                    handleExportQuestionCSV(q, idx)
+                  }
                 />
               ))}
             </>
