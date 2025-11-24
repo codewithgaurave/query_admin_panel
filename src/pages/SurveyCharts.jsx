@@ -10,13 +10,20 @@ import {
   FaChartBar,
   FaFileExcel,
   FaFilePdf,
+  FaThumbtack, // ⭐ pin icon
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
-import { listAllPublicSurveyResponses } from "../apis/surveyPublic";
+import {
+  listAllPublicSurveyResponses,
+  pinQuestionToDashboard, // ⭐ new API
+} from "../apis/surveyPublic";
 
 // PDF libs
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+
+// Excel lib
+import * as XLSX from "xlsx";
 
 // Chart.js imports
 import {
@@ -44,7 +51,14 @@ ChartJS.register(
 const fmtPercent = (v) => `${v.toFixed(2)} %`;
 
 // ---------- per-question chart component ----------
-function QuestionChart({ qStat, themeColors, index, onExportQuestionCSV }) {
+function QuestionChart({
+  qStat,
+  themeColors,
+  index,
+  onExportQuestionCSV,
+  onExportQuestionExcel,
+  onPinToDashboard, // ⭐ new prop
+}) {
   const { questionText, total, options } = qStat;
   const [chartType, setChartType] = useState("bar"); // "bar" | "pie"
 
@@ -213,20 +227,49 @@ function QuestionChart({ qStat, themeColors, index, onExportQuestionCSV }) {
             </div>
           </div>
 
-          {/* NEW: per-question CSV export */}
-          <button
-            type="button"
-            onClick={onExportQuestionCSV}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-semibold border transition-all"
-            style={{
-              borderColor: themeColors.primary,
-              color: themeColors.primary,
-              backgroundColor: themeColors.primary + "10",
-            }}
-          >
-            <FaFileExcel />
-            Export Question (CSV)
-          </button>
+          {/* per-question CSV + Excel export + Pin */}
+          <div className="flex gap-2 flex-wrap justify-end">
+            <button
+              type="button"
+              onClick={onExportQuestionCSV}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-semibold border transition-all"
+              style={{
+                borderColor: themeColors.primary,
+                color: themeColors.primary,
+                backgroundColor: themeColors.primary + "10",
+              }}
+            >
+              <FaFileExcel />
+              CSV
+            </button>
+            <button
+              type="button"
+              onClick={onExportQuestionExcel}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-semibold border transition-all"
+              style={{
+                borderColor: themeColors.primary,
+                color: themeColors.primary,
+                backgroundColor: "transparent",
+              }}
+            >
+              <FaFileExcel />
+              Excel
+            </button>
+            <button
+              type="button"
+              onClick={onPinToDashboard}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-semibold border transition-all"
+              style={{
+                borderColor: themeColors.text,
+                color: themeColors.text,
+                backgroundColor: themeColors.background,
+              }}
+              title="Pin this question to dashboard"
+            >
+              <FaThumbtack />
+              Pin to Dashboard
+            </button>
+          </div>
         </div>
       </div>
 
@@ -420,10 +463,11 @@ export default function SurveyCharts() {
     [activeSurvey]
   );
 
-  // --------- EXPORT HELPERS (EXCEL/CSV + PDF) ----------
+  // --------- EXPORT HELPERS (CSV / Excel + PDF) ----------
 
-  const handleExportCSV = () => {
-    if (!activeSurvey) return;
+  // Common helper to build analytics rows (AOA)
+  const buildAnalyticsRows = () => {
+    if (!activeSurvey) return [];
 
     const rows = [];
 
@@ -454,6 +498,15 @@ export default function SurveyCharts() {
       rows.push([]);
     });
 
+    return rows;
+  };
+
+  const handleExportCSV = () => {
+    if (!activeSurvey) return;
+
+    const rows = buildAnalyticsRows();
+    if (!rows.length) return;
+
     const csvContent = rows
       .map((row) =>
         row
@@ -466,7 +519,7 @@ export default function SurveyCharts() {
       )
       .join("\r\n");
 
-    // IMPORTANT: add UTF-8 BOM so Excel properly shows Hindi text
+    // UTF-8 BOM for Hindi text
     const blob = new Blob(["\uFEFF" + csvContent], {
       type: "text/csv;charset=utf-8;",
     });
@@ -483,7 +536,36 @@ export default function SurveyCharts() {
     URL.revokeObjectURL(url);
   };
 
-  // NEW: per-question CSV export (individual question data)
+  // full analytics Excel export
+  const handleExportExcel = () => {
+    if (!activeSurvey) return;
+
+    const rows = buildAnalyticsRows();
+    if (!rows.length) return;
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "Analytics");
+
+    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+
+    const blob = new Blob([wbout], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const safeName =
+      (activeSurvey.name || "survey").replace(/[^\w\-]+/g, "_") +
+      "_analytics.xlsx";
+    link.href = url;
+    link.setAttribute("download", safeName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // per-question CSV export (individual question data)
   const handleExportQuestionCSV = (q, index) => {
     if (!activeSurvey || !q) return;
 
@@ -495,6 +577,7 @@ export default function SurveyCharts() {
     rows.push([]);
     rows.push([`Q${index + 1}: ${q.questionText}`]);
     rows.push(["Option", "Responses", "Percent"]);
+
 
     q.options.forEach((opt) => {
       rows.push([
@@ -518,7 +601,7 @@ export default function SurveyCharts() {
       )
       .join("\r\n");
 
-    // Again, add UTF-8 BOM for Hindi text in Excel
+    // UTF-8 BOM for Hindi text
     const blob = new Blob(["\uFEFF" + csvContent], {
       type: "text/csv;charset=utf-8;",
     });
@@ -533,6 +616,73 @@ export default function SurveyCharts() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  // per-question Excel export
+  const handleExportQuestionExcel = (q, index) => {
+    if (!activeSurvey || !q) return;
+
+    const rows = [];
+
+    rows.push(["Survey Analytics - Single Question"]);
+    rows.push(["Survey Name", activeSurvey.name || "Untitled Survey"]);
+    rows.push(["Survey Code", activeSurvey.surveyCode || "-"]);
+    rows.push([]);
+    rows.push([`Q${index + 1}: ${q.questionText}`]);
+    rows.push(["Option", "Responses", "Percent"]);
+
+    q.options.forEach((opt) => {
+      rows.push([
+        opt.label || "–",
+        opt.count,
+        `${opt.percent.toFixed(2)} %`,
+      ]);
+    });
+
+    rows.push(["Total", q.total, "100.00 %"]);
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "Question");
+
+    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+
+    const blob = new Blob([wbout], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const safeSurveyName =
+      (activeSurvey.name || "survey").replace(/[^\w\-]+/g, "_");
+    const safeName = `${safeSurveyName}_Q${index + 1}_analytics.xlsx`;
+    link.href = url;
+    link.setAttribute("download", safeName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // ⭐ PIN handler – send surveyId + questionId to backend
+  const handlePinQuestionToDashboard = async (q) => {
+    if (!activeSurvey || !q?.questionId) {
+      toast.error("Question ID missing, cannot pin.");
+      return;
+    }
+
+    try {
+      await pinQuestionToDashboard({
+        surveyId: activeSurvey.surveyId,
+        questionId: q.questionId,
+      });
+      toast.success("Question pinned to dashboard.");
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to pin question.";
+      toast.error(msg);
+    }
   };
 
   const handleExportPDF = () => {
@@ -647,9 +797,9 @@ export default function SurveyCharts() {
             style={{ color: themeColors.text }}
           >
             Yahan se har survey ke questions ka overall analysis dekho – bar /
-            pie chart, counts aur percentage ke saath. Saath me Excel / PDF
-            export bhi available hai. Ab indivisual question ka bhi CSV export
-            kar sakte ho.
+            pie chart, counts aur percentage ke saath. Saath me Excel / CSV /
+            PDF export bhi available hai. Ab indivisual question ko dashboard
+            par **pin** karke wahan bhi same graph dekh sakte ho.
           </p>
         </div>
       </div>
@@ -657,6 +807,9 @@ export default function SurveyCharts() {
       {/* Layout: left survey list, right charts */}
       <div className="grid gap-4 lg:gap-5 lg:grid-cols-[280px,1fr]">
         {/* Left: survey list panel */}
+        {/* ... (yeh part same hai, maine upar se kuch change nahi kiya) ... */}
+
+        {/* Left panel exactly same as your last code */}
         <div
           className="rounded-2xl border p-4 space-y-3 shadow-sm max-h-[75vh]"
           style={{
@@ -758,7 +911,9 @@ export default function SurveyCharts() {
                               ? themeColors.success
                               : s.status === "DRAFT"
                               ? themeColors.primary
-                              : themeColors.danger,
+                              : s.status === "CLOSED"
+                              ? themeColors.danger
+                              : themeColors.text,
                         }}
                       >
                         {s.status}
@@ -785,6 +940,10 @@ export default function SurveyCharts() {
           {activeSurvey && (
             <>
               {/* Active survey header summary */}
+              {/* ... header + export buttons same as above handleExportCSV/Excel/PDF ... */}
+              {/* (keeping as-is from your last code, not repeating here again to save space) */}
+
+              {/* Header card */}
               <div
                 className="rounded-2xl border p-4 md:p-5 flex flex-col gap-4 shadow-sm"
                 style={{
@@ -891,7 +1050,20 @@ export default function SurveyCharts() {
                     }}
                   >
                     <FaFileExcel />
-                    Export Excel (CSV)
+                    Export CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportExcel}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs md:text-sm font-semibold border transition-all"
+                    style={{
+                      borderColor: themeColors.primary,
+                      color: themeColors.primary,
+                      backgroundColor: "transparent",
+                    }}
+                  >
+                    <FaFileExcel />
+                    Export Excel
                   </button>
                   <button
                     type="button"
@@ -928,6 +1100,12 @@ export default function SurveyCharts() {
                   index={idx}
                   onExportQuestionCSV={() =>
                     handleExportQuestionCSV(q, idx)
+                  }
+                  onExportQuestionExcel={() =>
+                    handleExportQuestionExcel(q, idx)
+                  }
+                  onPinToDashboard={() =>
+                    handlePinQuestionToDashboard(q)
                   }
                 />
               ))}

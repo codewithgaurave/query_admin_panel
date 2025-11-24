@@ -11,14 +11,15 @@ import {
   FaUser,
   FaHeadphones,
   FaCheckCircle,
-  FaMapMarkerAlt, // ⭐ location
-  FaFileExcel, // ⭐ for export button
+  FaMapMarkerAlt,
+  FaFileExcel,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
   listSurveyResponseSummary,
   getUserSurveySummary,
 } from "../apis/surveys";
+import * as XLSX from "xlsx"; // Excel export
 
 const fmtDateTime = (d) => {
   if (!d) return "-";
@@ -33,13 +34,13 @@ const fmtDateTime = (d) => {
   }
 };
 
-// Helper: CSV-safe value
+// CSV-safe value
 const csvEscape = (val) =>
   `"${String(val ?? "")
     .replace(/"/g, '""')
     .trim()}"`;
 
-// Helper: build answer text like in UI
+// Answer text like UI
 const buildAnswerText = (ans) => {
   if (!ans) return "-";
   if (ans.questionType === "OPEN_ENDED") {
@@ -57,21 +58,19 @@ export default function SurveyResponses() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [summary, setSummary] = useState([]); // [{surveyId,...}]
+  const [summary, setSummary] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
 
-  // detail screen state
-  const [selectedSurvey, setSelectedSurvey] = useState(null); // from summary
-  const [selectedUser, setSelectedUser] = useState(null); // { userCode, userName, userMobile }
+  const [selectedSurvey, setSelectedSurvey] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(null);
   const [userLoading, setUserLoading] = useState(false);
-  const [userSurveyData, setUserSurveyData] = useState(null); // full payload from API
-  const [responseFilter, setResponseFilter] = useState("ALL"); // ALL | APPROVED | NOT_APPROVED
+  const [userSurveyData, setUserSurveyData] = useState(null);
+  const [responseFilter, setResponseFilter] = useState("ALL");
 
-  // which response audio is currently open in detail screen
   const [openAudioId, setOpenAudioId] = useState(null);
 
-  // ⭐ track which survey is being exported
+  // common exporting state (CSV / Excel)
   const [exportingSurveyId, setExportingSurveyId] = useState(null);
 
   const loadSummary = async () => {
@@ -115,7 +114,6 @@ export default function SurveyResponses() {
     });
   }, [summary, search, statusFilter]);
 
-  // open full-screen detail view
   const openUserDetail = async (survey, user) => {
     setSelectedSurvey(survey);
     setSelectedUser(user);
@@ -147,8 +145,58 @@ export default function SurveyResponses() {
     setOpenAudioId(null);
   };
 
-  // ⭐ NEW: export all responses (all users) for a single survey
-  const handleExportSurvey = async (surveySummaryItem) => {
+  // -------- Helper: collect all records + question order (common for CSV & Excel) --------
+  const collectSurveyRecords = async (surveySummaryItem) => {
+    const users = surveySummaryItem.users || [];
+    const allRecords = []; // { user, resp, answersMap }
+    const questionOrder = [];
+    const questionSet = new Set();
+
+    for (const user of users) {
+      try {
+        const res = await getUserSurveySummary(user.userCode);
+        const data = res || {};
+
+        const surveyItem =
+          data.surveys?.find(
+            (sv) =>
+              String(sv.surveyId) === String(surveySummaryItem.surveyId) ||
+              sv.surveyCode === surveySummaryItem.surveyCode
+          ) || null;
+
+        if (!surveyItem || !surveyItem.responses?.length) {
+          continue;
+        }
+
+        (surveyItem.responses || []).forEach((resp) => {
+          const answers = resp.answers || [];
+          const answersMap = {};
+
+          answers.forEach((a) => {
+            const qText = a.questionText || "";
+            if (!qText) return;
+            const ansText = buildAnswerText(a);
+
+            if (!questionSet.has(qText)) {
+              questionSet.add(qText);
+              questionOrder.push(qText);
+            }
+
+            answersMap[qText] = ansText;
+          });
+
+          allRecords.push({ user, resp, answersMap });
+        });
+      } catch (err) {
+        console.error("Error fetching user survey summary for export", err);
+      }
+    }
+
+    return { allRecords, questionOrder };
+  };
+
+  // ---------------- CSV EXPORT ----------------
+  const handleExportSurveyCSV = async (surveySummaryItem) => {
     if (!surveySummaryItem) return;
 
     const users = surveySummaryItem.users || [];
@@ -159,61 +207,10 @@ export default function SurveyResponses() {
 
     try {
       setExportingSurveyId(surveySummaryItem.surveyId);
-      toast.info("Export prepare ho raha hai, please wait...");
+      toast.info("CSV export prepare ho raha hai...");
 
-      const rows = [];
-
-      // Meta info on top
-      rows.push(["Survey Responses Export"]);
-      rows.push(["Survey ID", surveySummaryItem.surveyId]);
-      rows.push(["Survey Code", surveySummaryItem.surveyCode || "-"]);
-      rows.push(["Survey Name", surveySummaryItem.name || "-"]);
-      rows.push([]); // blank line
-
-      // ---- 1st PASS: collect all responses + unique questions ----
-      const allRecords = []; // { user, resp, answersMap }
-      const questionOrder = []; // to keep column order stable
-      const questionSet = new Set();
-
-      for (const user of users) {
-        try {
-          const res = await getUserSurveySummary(user.userCode);
-          const data = res || {};
-
-          const surveyItem =
-            data.surveys?.find(
-              (sv) =>
-                String(sv.surveyId) === String(surveySummaryItem.surveyId) ||
-                sv.surveyCode === surveySummaryItem.surveyCode
-            ) || null;
-
-          if (!surveyItem || !surveyItem.responses?.length) {
-            continue;
-          }
-
-          (surveyItem.responses || []).forEach((resp) => {
-            const answers = resp.answers || [];
-            const answersMap = {};
-
-            answers.forEach((a) => {
-              const qText = a.questionText || "";
-              if (!qText) return;
-              const ansText = buildAnswerText(a);
-
-              if (!questionSet.has(qText)) {
-                questionSet.add(qText);
-                questionOrder.push(qText);
-              }
-
-              answersMap[qText] = ansText;
-            });
-
-            allRecords.push({ user, resp, answersMap });
-          });
-        } catch (err) {
-          console.error("Error fetching user survey summary for export", err);
-        }
-      }
+      const { allRecords, questionOrder } =
+        await collectSurveyRecords(surveySummaryItem);
 
       if (allRecords.length === 0) {
         toast.error(
@@ -223,50 +220,60 @@ export default function SurveyResponses() {
         return;
       }
 
-      // ---- HEADER ROW (meta columns + per-question columns) ----
+      const rows = [];
+
+      // Meta sheet jaisa top section CSV me bhi
+      rows.push(["Survey Responses Export"]);
+      rows.push(["Survey ID", surveySummaryItem.surveyId]);
+      rows.push(["Survey Code", surveySummaryItem.surveyCode || "-"]);
+      rows.push(["Survey Name", surveySummaryItem.name || "-"]);
+      rows.push([]);
+
       const questionHeaders = questionOrder;
+
+      // Header row
       rows.push([
         "Sample ID",
         "Timestamp",
-        "Location",
+        "Last Updated (IST)",
+        "Latitude",
+        "Longitude",
         "Address",
         "Audio Url",
         "Surveyor Name",
         "Surveyor Phone Number",
         "Is Approved",
-        "Approved By",
+        "Approved By Name",
+        "Approved By User Code",
         "Is Completed",
         ...questionHeaders,
       ]);
 
-      // ---- DATA ROWS ----
+      // Data rows
       allRecords.forEach(({ user, resp, answersMap }) => {
         const lat =
           resp.latitude !== undefined && resp.latitude !== null
             ? Number(resp.latitude)
-            : null;
+            : "";
         const lng =
           resp.longitude !== undefined && resp.longitude !== null
             ? Number(resp.longitude)
-            : null;
-
-        const hasLocation =
-          lat !== null && !Number.isNaN(lat) && lng !== null && !Number.isNaN(lng);
-
-        const locationStr = hasLocation ? `(${lat}, ${lng})` : "";
+            : "";
 
         const row = [
           resp.responseId ?? "",
           resp.createdAt ?? "",
-          locationStr,
-          resp.address ?? "", // agar backend me ho to yaha aa jayega
+          resp.updatedAtIST ?? "",
+          lat !== "" && !Number.isNaN(lat) ? lat : "",
+          lng !== "" && !Number.isNaN(lng) ? lng : "",
+          resp.address ?? "",
           resp.audioUrl ?? "",
           user.userName || user.userCode || "",
           user.userMobile || "",
           resp.isApproved ? "YES" : "NO",
-          resp.approvedBy ?? "",
+          resp.approvedByName || "",
+          resp.approvedByUserCode || "",
           resp.isCompleted === false ? "NO" : "YES",
-          // question-wise answers
           ...questionHeaders.map((qh) => answersMap[qh] ?? ""),
         ];
 
@@ -298,7 +305,114 @@ export default function SurveyResponses() {
       const msg =
         err?.response?.data?.message ||
         err?.message ||
-        "Failed to export survey data.";
+        "Failed to export survey data (CSV).";
+      toast.error(msg);
+    } finally {
+      setExportingSurveyId(null);
+    }
+  };
+
+  // ---------------- EXCEL EXPORT ----------------
+  const handleExportSurveyExcel = async (surveySummaryItem) => {
+    if (!surveySummaryItem) return;
+
+    const users = surveySummaryItem.users || [];
+    if (users.length === 0) {
+      toast.error("Is survey ke liye koi user data nahi mila.");
+      return;
+    }
+
+    try {
+      setExportingSurveyId(surveySummaryItem.surveyId);
+      toast.info("Excel export prepare ho raha hai...");
+
+      const { allRecords, questionOrder } =
+        await collectSurveyRecords(surveySummaryItem);
+
+      if (allRecords.length === 0) {
+        toast.error(
+          "Is survey ke liye export karne layak koi response nahi mila."
+        );
+        setExportingSurveyId(null);
+        return;
+      }
+
+      const dataRows = allRecords.map(({ user, resp, answersMap }) => {
+        const lat =
+          resp.latitude !== undefined && resp.latitude !== null
+            ? Number(resp.latitude)
+            : "";
+        const lng =
+          resp.longitude !== undefined && resp.longitude !== null
+            ? Number(resp.longitude)
+            : "";
+
+        const baseRow = {
+          "Sample ID": resp.responseId ?? "",
+          Timestamp: resp.createdAt ?? "",
+          "Last Updated (IST)": resp.updatedAtIST ?? "",
+          Latitude:
+            lat !== "" && !Number.isNaN(lat) ? lat : "",
+          Longitude:
+            lng !== "" && !Number.isNaN(lng) ? lng : "",
+          Address: resp.address ?? "",
+          "Audio Url": resp.audioUrl ?? "",
+          "Surveyor Name": user.userName || user.userCode || "",
+          "Surveyor Phone Number": user.userMobile || "",
+          "Is Approved": resp.isApproved ? "YES" : "NO",
+          "Approved By Name": resp.approvedByName || "",
+          "Approved By User Code": resp.approvedByUserCode || "",
+          "Is Completed": resp.isCompleted === false ? "NO" : "YES",
+        };
+
+        questionOrder.forEach((qText) => {
+          baseRow[qText] = answersMap[qText] ?? "";
+        });
+
+        return baseRow;
+      });
+
+      const wb = XLSX.utils.book_new();
+
+      // Meta sheet
+      const metaSheetData = [
+        ["Survey Responses Export"],
+        ["Survey ID", surveySummaryItem.surveyId],
+        ["Survey Code", surveySummaryItem.surveyCode || "-"],
+        ["Survey Name", surveySummaryItem.name || "-"],
+      ];
+      const metaWs = XLSX.utils.aoa_to_sheet(metaSheetData);
+      XLSX.utils.book_append_sheet(wb, metaWs, "Meta");
+
+      // Responses sheet
+      const dataWs = XLSX.utils.json_to_sheet(dataRows);
+      XLSX.utils.book_append_sheet(wb, dataWs, "Responses");
+
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+
+      const blob = new Blob([wbout], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const safeName =
+        (surveySummaryItem.name || "survey")
+          .replace(/[^\w\-]+/g, "_")
+          .substring(0, 80) + "_responses_export.xlsx";
+
+      link.href = url;
+      link.setAttribute("download", safeName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success("Survey responses Excel export ho gaya.");
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to export survey data (Excel).";
       toast.error(msg);
     } finally {
       setExportingSurveyId(null);
@@ -350,10 +464,7 @@ export default function SurveyResponses() {
         <div className="flex items-center justify-center py-10">
           <div className="text-center">
             <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mx-auto" />
-            <p
-              className="mt-3 text-sm"
-              style={{ color: themeColors.text }}
-            >
+            <p className="mt-3 text-sm" style={{ color: themeColors.text }}>
               Loading user responses...
             </p>
           </div>
@@ -361,19 +472,13 @@ export default function SurveyResponses() {
       );
     } else if (!userSurveyData) {
       content = (
-        <p
-          className="text-sm opacity-75"
-          style={{ color: themeColors.text }}
-        >
+        <p className="text-sm opacity-75" style={{ color: themeColors.text }}>
           No data found.
         </p>
       );
     } else if (!surveyItem || !surveyItem.responses?.length) {
       content = (
-        <p
-          className="text-sm opacity-75"
-          style={{ color: themeColors.text }}
-        >
+        <p className="text-sm opacity-75" style={{ color: themeColors.text }}>
           Is user ne is survey ka koi response nahi diya (ya data migrate nahi
           hua).
         </p>
@@ -384,18 +489,16 @@ export default function SurveyResponses() {
       const approvedCount = responses.filter((r) => r.isApproved).length;
       const notApprovedCount = totalResponses - approvedCount;
 
-      // apply filters
       const filteredResponses = responses.filter((r) => {
         if (responseFilter === "APPROVED") return r.isApproved;
         if (responseFilter === "NOT_APPROVED") return !r.isApproved;
-        return true; // ALL
+        return true;
       });
 
       content = (
         <>
           {/* Stats + filters */}
           <div className="space-y-4">
-            {/* Stats */}
             <div
               className="rounded-2xl border p-4 grid grid-cols-1 sm:grid-cols-3 gap-3"
               style={{
@@ -516,6 +619,15 @@ export default function SurveyResponses() {
                 resp.longitude !== undefined &&
                 resp.longitude !== null;
 
+              const approvedLabel = resp.approvedByName
+                ? `${resp.approvedByName}${
+                    resp.approvedByUserCode
+                      ? ` (${resp.approvedByUserCode})`
+                      : ""
+                  }`
+                : resp.approvedByUserCode ||
+                  (resp.approvedBy ? String(resp.approvedBy) : "-");
+
               return (
                 <div
                   key={respKey}
@@ -525,7 +637,6 @@ export default function SurveyResponses() {
                     backgroundColor: themeColors.surface,
                   }}
                 >
-                  {/* Response header */}
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div>
                       <p
@@ -549,7 +660,6 @@ export default function SurveyResponses() {
                         </p>
                       )}
 
-                      {/* Approval info */}
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         {resp.isApproved ? (
                           <span
@@ -579,12 +689,11 @@ export default function SurveyResponses() {
                         >
                           Approved By:{" "}
                           <span className="font-mono">
-                            {resp.approvedBy ? String(resp.approvedBy) : "-"}
+                            {approvedLabel || "-"}
                           </span>
                         </span>
                       </div>
 
-                      {/* Location chip (if present) */}
                       {hasLocation && (
                         <button
                           type="button"
@@ -609,7 +718,6 @@ export default function SurveyResponses() {
                       )}
                     </div>
 
-                    {/* Audio controls */}
                     {resp.audioUrl && (
                       <div className="flex flex-col items-start sm:items-end gap-2 min-w-[220px]">
                         <button
@@ -649,7 +757,6 @@ export default function SurveyResponses() {
                     style={{ borderColor: themeColors.border }}
                   />
 
-                  {/* Q&A list */}
                   <div className="mt-1 space-y-3">
                     {(resp.answers || []).map((a, qIndex) => {
                       const answerText = buildAnswerText(a);
@@ -696,10 +803,8 @@ export default function SurveyResponses() {
       );
     }
 
-    // Full-page detail layout
     return (
       <div className="space-y-6">
-        {/* Detail header with back button */}
         <div className="flex flex-col gap-3">
           <button
             type="button"
@@ -760,7 +865,6 @@ export default function SurveyResponses() {
   // ---------- LIST VIEW ----------
   return (
     <div className="relative space-y-6">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h1
@@ -776,12 +880,11 @@ export default function SurveyResponses() {
           >
             Dekho kaun-kaun se surveys pe kitne responses aaye, kis user ne diya,
             aur detail dekhne ke liye user pe click karo. Ab har survey ka full
-            CSV export bhi available hai.
+            Excel aur CSV export dono available hai.
           </p>
         </div>
       </div>
 
-      {/* Filters */}
       <div
         className="rounded-xl border p-3 md:p-4 shadow-sm"
         style={{
@@ -790,7 +893,6 @@ export default function SurveyResponses() {
         }}
       >
         <div className="flex flex-col md:flex-row gap-3 md:items-center">
-          {/* Search */}
           <div className="flex-1 relative">
             <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
             <input
@@ -806,7 +908,6 @@ export default function SurveyResponses() {
             />
           </div>
 
-          {/* Status filter */}
           <div className="min-w-[160px]">
             <label
               className="text-xs mb-1 block opacity-70"
@@ -833,7 +934,6 @@ export default function SurveyResponses() {
         </div>
       </div>
 
-      {/* Summary table */}
       <div
         className="rounded-2xl border shadow-sm overflow-hidden"
         style={{
@@ -872,7 +972,6 @@ export default function SurveyResponses() {
             >
               {filteredSummary.map((s) => (
                 <tr key={s.surveyId}>
-                  {/* Survey name */}
                   <td className="px-4 py-3">
                     <div
                       className="font-medium"
@@ -882,7 +981,6 @@ export default function SurveyResponses() {
                     </div>
                   </td>
 
-                  {/* Code */}
                   <td
                     className="px-4 py-3 text-xs font-mono"
                     style={{ color: themeColors.text }}
@@ -890,7 +988,6 @@ export default function SurveyResponses() {
                     {s.surveyCode}
                   </td>
 
-                  {/* Status */}
                   <td className="px-4 py-3 text-xs">
                     <span
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold"
@@ -916,7 +1013,6 @@ export default function SurveyResponses() {
                     </span>
                   </td>
 
-                  {/* Category */}
                   <td
                     className="px-4 py-3 text-xs"
                     style={{ color: themeColors.text }}
@@ -924,7 +1020,6 @@ export default function SurveyResponses() {
                     {s.category || "-"}
                   </td>
 
-                  {/* Project */}
                   <td
                     className="px-4 py-3 text-xs"
                     style={{ color: themeColors.text }}
@@ -932,7 +1027,6 @@ export default function SurveyResponses() {
                     {s.projectName || "-"}
                   </td>
 
-                  {/* Total responses */}
                   <td
                     className="px-4 py-3 text-xs font-semibold"
                     style={{ color: themeColors.primary }}
@@ -940,7 +1034,6 @@ export default function SurveyResponses() {
                     {s.totalResponses}
                   </td>
 
-                  {/* Users */}
                   <td className="px-4 py-3 text-xs">
                     {(!s.users || s.users.length === 0) && (
                       <span
@@ -975,7 +1068,6 @@ export default function SurveyResponses() {
                     )}
                   </td>
 
-                  {/* Last response */}
                   <td
                     className="px-4 py-3 text-xs"
                     style={{ color: themeColors.text }}
@@ -983,24 +1075,42 @@ export default function SurveyResponses() {
                     {fmtDateTime(s.lastResponseAt)}
                   </td>
 
-                  {/* Export button */}
+                  {/* Export buttons */}
                   <td className="px-4 py-3 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => handleExportSurvey(s)}
-                      disabled={exportingSurveyId === s.surveyId}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-[11px] font-semibold disabled:opacity-60"
-                      style={{
-                        borderColor: themeColors.primary,
-                        backgroundColor: themeColors.surface,
-                        color: themeColors.primary,
-                      }}
-                    >
-                      <FaFileExcel />
-                      {exportingSurveyId === s.surveyId
-                        ? "Exporting..."
-                        : "Export CSV"}
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleExportSurveyCSV(s)}
+                        disabled={exportingSurveyId === s.surveyId}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-[11px] font-semibold disabled:opacity-60"
+                        style={{
+                          borderColor: themeColors.primary,
+                          backgroundColor: themeColors.surface,
+                          color: themeColors.primary,
+                        }}
+                      >
+                        <FaFileExcel />
+                        {exportingSurveyId === s.surveyId
+                          ? "Exporting..."
+                          : "CSV"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleExportSurveyExcel(s)}
+                        disabled={exportingSurveyId === s.surveyId}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-[11px] font-semibold disabled:opacity-60"
+                        style={{
+                          borderColor: themeColors.primary,
+                          backgroundColor: themeColors.surface,
+                          color: themeColors.primary,
+                        }}
+                      >
+                        <FaFileExcel />
+                        {exportingSurveyId === s.surveyId
+                          ? "Exporting..."
+                          : "Excel"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

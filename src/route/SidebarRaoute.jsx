@@ -10,6 +10,7 @@ import {
   FaQuestionCircle,  // Questions icon
   FaChartBar,        // Charts icon
   FaMapMarkerAlt,    // ⭐ Punch-ins icon
+  FaThumbtack,       // ⭐ Pinned questions icon
 } from "react-icons/fa";
 
 // Existing pages
@@ -25,8 +26,26 @@ const SurveyCharts = lazy(() => import("../pages/SurveyCharts")); // ⭐ charts 
 // ⭐ NEW: Punch-ins page
 const Punchins = lazy(() => import("../pages/Punchins"));
 
+// ⭐ NEW: Pinned Questions Dashboard page
+const SurveyDashboardPins = lazy(() =>
+  import("../pages/SurveyDashboardPins")
+);
+
 const routes = [
-  { path: "/dashboard", component: Dashboard, name: "Dashboard", icon: FaTachometerAlt },
+  {
+    path: "/dashboard",
+    component: Dashboard,
+    name: "Dashboard",
+    icon: FaTachometerAlt,
+  },
+
+  // ⭐ NEW: Pinned Questions Dashboard – sidebar me Dashboard ke just niche
+  {
+    path: "/survey-dashboard",
+    component: SurveyDashboardPins,
+    name: "Pinned Questions",
+    icon: FaThumbtack,
+  },
 
   { path: "/users", component: Users, name: "Users", icon: FaUsers },
 

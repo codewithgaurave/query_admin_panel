@@ -32,3 +32,18 @@ export const setSurveyResponseApproval = async (
   );
   return data; // { message, response }
 };
+
+// ⭐ new
+export const pinQuestionToDashboard = async ({ surveyId, questionId }) => {
+  const { data } = await http.post("/survey/public/dashboard/pin", {
+    surveyId,
+    questionId,
+  });
+  return data;
+};
+
+// (optional) dashboard ke liye get pinned questions
+export const getDashboardPinnedQuestions = async () => {
+  const { data } = await http.get("/survey/public/dashboard/pins");
+  return data;
+};
