@@ -47,3 +47,11 @@ export const getDashboardPinnedQuestions = async () => {
   const { data } = await http.get("/survey/public/dashboard/pins");
   return data;
 };
+
+// ⭐ NEW: delete/unpin pinned question
+export const deleteDashboardPinnedQuestion = async (pinId) => {
+  const { data } = await http.delete(
+    `/survey/public/dashboard/pins/${pinId}`
+  );
+  return data; // { message, pin }
+};

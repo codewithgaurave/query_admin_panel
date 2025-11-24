@@ -3,7 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import { FaThumbtack, FaClipboardList, FaSearch } from "react-icons/fa";
 import { toast } from "sonner";
 import { useTheme } from "../context/ThemeContext";
-import { getDashboardPinnedQuestions } from "../apis/surveyPublic";
+import {
+  getDashboardPinnedQuestions,
+  deleteDashboardPinnedQuestion, // ⭐ NEW
+} from "../apis/surveyPublic";
 
 // Chart.js imports
 import {
@@ -22,9 +25,15 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 const fmtPercent = (v) => `${v.toFixed(2)} %`;
 
 // Small card component for each pinned question
-function PinnedQuestionCard({ pin, themeColors }) {
-  const { surveyName, surveyCode, questionText, total, options, lastResponseAt } =
-    pin;
+function PinnedQuestionCard({ pin, themeColors, onDelete, isDeleting }) {
+  const {
+    surveyName,
+    surveyCode,
+    questionText,
+    total,
+    options,
+    lastResponseAt,
+  } = pin;
 
   const labels = options.map((o) => o.label || "–");
   const counts = options.map((o) => o.count);
@@ -137,20 +146,40 @@ function PinnedQuestionCard({ pin, themeColors }) {
         </div>
 
         <div className="flex flex-col items-end gap-2 text-xs md:text-sm">
-          <div>
-            <p
-              className="text-[11px] uppercase opacity-70"
-              style={{ color: themeColors.text }}
-            >
-              Total Responses
-            </p>
-            <p
-              className="text-xl md:text-2xl font-bold text-right"
-              style={{ color: themeColors.primary }}
-            >
-              {total}
-            </p>
+          <div className="flex items-center gap-2">
+            <div>
+              <p
+                className="text-[11px] uppercase opacity-70"
+                style={{ color: themeColors.text }}
+              >
+                Total Responses
+              </p>
+              <p
+                className="text-xl md:text-2xl font-bold text-right"
+                style={{ color: themeColors.primary }}
+              >
+                {total}
+              </p>
+            </div>
+
+            {/* ⭐ Delete / Unpin button */}
+            {onDelete && (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={isDeleting}
+                className="px-3 py-1.5 rounded-full text-[11px] md:text-xs border hover:opacity-90 transition disabled:opacity-60"
+                style={{
+                  borderColor: themeColors.border,
+                  color: themeColors.danger,
+                  backgroundColor: themeColors.background,
+                }}
+              >
+                {isDeleting ? "Removing..." : "Unpin"}
+              </button>
+            )}
           </div>
+
           <div className="text-right">
             <p
               className="text-[11px] uppercase opacity-70"
@@ -252,6 +281,7 @@ export default function SurveyDashboardPins() {
   const [error, setError] = useState("");
   const [pins, setPins] = useState([]);
   const [search, setSearch] = useState("");
+  const [deletingId, setDeletingId] = useState(null); // ⭐ NEW
 
   const loadPins = async () => {
     try {
@@ -276,15 +306,37 @@ export default function SurveyDashboardPins() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleDeletePin = async (pin) => {
+    const confirmDelete = window.confirm(
+      `Kya aap sure ho ki "${pin.questionText}" ko dashboard se unpin karna hai?`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      setDeletingId(pin.pinId);
+      const res = await deleteDashboardPinnedQuestion(pin.pinId);
+      toast.success(res?.message || "Pinned question removed from dashboard.");
+
+      // Local state se bhi hata do
+      setPins((prev) => prev.filter((p) => p.pinId !== pin.pinId));
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to remove pinned question.";
+      toast.error(msg);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const filteredPins = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return pins;
     return pins.filter((p) => {
-      const fields = [
-        p.surveyName,
-        p.surveyCode,
-        p.questionText,
-      ].filter(Boolean);
+      const fields = [p.surveyName, p.surveyCode, p.questionText].filter(
+        Boolean
+      );
       return fields.some((f) => String(f).toLowerCase().includes(q));
     });
   }, [pins, search]);
@@ -336,7 +388,7 @@ export default function SurveyDashboardPins() {
             className="text-sm md:text-base mt-1 opacity-80"
             style={{ color: themeColors.text }}
           >
-            Yahan tumne jo survey questions **pin** kiye hain, unka live
+            Yahan tumne jo survey questions <b>pin</b> kiye hain, unka live
             analytics ek hi jagah pe dikhega – total responses, option-wise
             counts, percentage aur bar chart ke saath.
           </p>
@@ -417,6 +469,8 @@ export default function SurveyDashboardPins() {
               key={pin.pinId}
               pin={pin}
               themeColors={themeColors}
+              onDelete={() => handleDeletePin(pin)}
+              isDeleting={deletingId === pin.pinId}
             />
           ))}
         </div>
