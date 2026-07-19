@@ -43,6 +43,7 @@ export const createUser = async (payload) => {
   const { data } = await http.post("/user/create", formData, {
     headers: {
       ...authHeaders(),
+      "Content-Type": "multipart/form-data",
     },
   });
   // backend: { message, user }
