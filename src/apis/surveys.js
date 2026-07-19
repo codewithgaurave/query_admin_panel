@@ -41,6 +41,17 @@ export const deleteSurvey = async (surveyIdOrCode) => {
 };
 
 /**
+ * POST /survey/:surveyIdOrCode/duplicate
+ * Admin duplicates a survey
+ */
+export const duplicateSurvey = async (surveyIdOrCode) => {
+  const { data } = await http.post(`/survey/${surveyIdOrCode}/duplicate`, {}, {
+    headers: authHeaders(),
+  });
+  return data;
+};
+
+/**
  * GET /survey/list
  * Admin: list all surveys
  * backend: survey me ab assignedUsers bhi aayega (populate)

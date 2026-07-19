@@ -19,6 +19,7 @@ import {
   FaEdit,
   FaTrash,
   FaUser,
+  FaCopy,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -26,6 +27,7 @@ import {
   listSurveys,
   updateSurvey,
   deleteSurvey,
+  duplicateSurvey,
 } from "../apis/surveys";
 import { listUsers } from "../apis/users"; // ✅ NEW – users list for assignment
 
@@ -332,6 +334,31 @@ export default function Surveys() {
         err?.response?.data?.message ||
         err?.message ||
         "Failed to delete survey.";
+      toast.error(msg);
+    }
+  };
+
+  const handleDuplicateSurvey = async (survey) => {
+    const label = survey.name || survey.surveyCode;
+    const ok = window.confirm(
+      `Are you sure you want to duplicate survey "${label}"? This will create a new survey with all its questions.`
+    );
+    if (!ok) return;
+
+    try {
+      const idOrCode = survey._id || survey.surveyCode;
+      const res = await duplicateSurvey(idOrCode);
+      if (res?.survey) {
+        setSurveys((prev) => [res.survey, ...prev]);
+      } else {
+        loadSurveys(); // Fallback if backend doesn't return the survey
+      }
+      toast.success(res?.message || "Survey duplicated successfully");
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to duplicate survey.";
       toast.error(msg);
     }
   };
@@ -1234,6 +1261,19 @@ export default function Surveys() {
                       >
                         <FaEdit />
                         Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDuplicateSurvey(s)}
+                        className="px-2.5 py-1.5 rounded-lg border text-xs font-semibold inline-flex items-center gap-1"
+                        style={{
+                          borderColor: themeColors.primary,
+                          color: themeColors.primary,
+                          backgroundColor: themeColors.surface,
+                        }}
+                      >
+                        <FaCopy />
+                        Duplicate
                       </button>
                       <button
                         type="button"
