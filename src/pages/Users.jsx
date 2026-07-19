@@ -940,20 +940,42 @@ export default function Users() {
                 {filteredUsers.map((u) => (
                   <tr key={u._id}>
                     <td className="px-4 py-3">
-                      <div
-                        className="font-medium"
-                        style={{ color: themeColors.text }}
-                      >
-                        {u.fullName}
-                      </div>
-                      {u.employeeCode && (
-                        <div
-                          className="text-xs opacity-70"
-                          style={{ color: themeColors.text }}
-                        >
-                          Emp: {u.employeeCode}
+                      <div className="flex items-center gap-3">
+                        {u.profilePhotoUrl ? (
+                          <img
+                            src={u.profilePhotoUrl}
+                            alt={u.fullName}
+                            className="w-10 h-10 rounded-full object-cover border"
+                            style={{ borderColor: themeColors.border }}
+                          />
+                        ) : (
+                          <div
+                            className="w-10 h-10 rounded-full flex items-center justify-center font-bold"
+                            style={{
+                              backgroundColor: themeColors.primary + "20",
+                              color: themeColors.primary,
+                            }}
+                          >
+                            {u.fullName.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <div
+                            className="font-medium"
+                            style={{ color: themeColors.text }}
+                          >
+                            {u.fullName}
+                          </div>
+                          {u.employeeCode && (
+                            <div
+                              className="text-xs opacity-70"
+                              style={{ color: themeColors.text }}
+                            >
+                              Emp: {u.employeeCode}
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </td>
                     <td
                       className="px-4 py-3 text-xs"
@@ -1129,27 +1151,47 @@ export default function Users() {
                 >
                   {/* Top: name + status */}
                   <div className="flex items-start justify-between gap-2 mb-3">
-                    <div>
-                      <div
-                        className="font-semibold text-sm md:text-base"
-                        style={{ color: themeColors.text }}
-                      >
-                        {u.fullName}
-                      </div>
-                      <div
-                        className="text-xs opacity-70"
-                        style={{ color: themeColors.text }}
-                      >
-                        {u.userCode}
-                      </div>
-                      {u.employeeCode && (
+                    <div className="flex items-start gap-3">
+                      {u.profilePhotoUrl ? (
+                        <img
+                          src={u.profilePhotoUrl}
+                          alt={u.fullName}
+                          className="w-12 h-12 rounded-full object-cover border"
+                          style={{ borderColor: themeColors.border }}
+                        />
+                      ) : (
                         <div
-                          className="text-[11px] opacity-70 mt-1"
-                          style={{ color: themeColors.text }}
+                          className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg"
+                          style={{
+                            backgroundColor: themeColors.primary + "20",
+                            color: themeColors.primary,
+                          }}
                         >
-                          Emp: {u.employeeCode}
+                          {u.fullName.charAt(0).toUpperCase()}
                         </div>
                       )}
+                      <div>
+                        <div
+                          className="font-semibold text-sm md:text-base"
+                          style={{ color: themeColors.text }}
+                        >
+                          {u.fullName}
+                        </div>
+                        <div
+                          className="text-xs opacity-70"
+                          style={{ color: themeColors.text }}
+                        >
+                          {u.userCode}
+                        </div>
+                        {u.employeeCode && (
+                          <div
+                            className="text-[11px] opacity-70 mt-1"
+                            style={{ color: themeColors.text }}
+                          >
+                            Emp: {u.employeeCode}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <span
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold"
