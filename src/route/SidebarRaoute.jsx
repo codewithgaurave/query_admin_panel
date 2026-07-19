@@ -11,6 +11,7 @@ import {
   FaChartBar,        // Charts icon
   FaMapMarkerAlt,    // ⭐ Punch-ins icon
   FaThumbtack,       // ⭐ Pinned questions icon
+  FaUserCog,         // Admin Profile icon
 } from "react-icons/fa";
 
 // Existing pages
@@ -30,6 +31,9 @@ const Punchins = lazy(() => import("../pages/Punchins"));
 const SurveyDashboardPins = lazy(() =>
   import("../pages/SurveyDashboardPins")
 );
+
+// ⭐ NEW: Admin Profile page
+const AdminProfile = lazy(() => import("../pages/AdminProfile"));
 
 const routes = [
   {
@@ -79,6 +83,14 @@ const routes = [
     component: SurveyCharts,
     name: "Survey Charts",
     icon: FaChartBar,
+  },
+
+  // ⭐ Admin Profile
+  {
+    path: "/profile",
+    component: AdminProfile,
+    name: "Profile Settings",
+    icon: FaUserCog,
   },
 
   // ⭐ Question builder route — HIDDEN from sidebar
