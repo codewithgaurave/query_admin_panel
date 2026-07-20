@@ -1017,7 +1017,7 @@ export default function SurveyQuestions() {
             {/* RIGHT: Type-specific config / options UI (sirf root ke liye) */}
             <div className="space-y-4">
               {/* Options Panel */}
-              {!isFollowUpMode && needsOptions && (
+              {needsOptions && (
                 <div
                   className="rounded-lg border p-3 md:p-4"
                   style={{
@@ -1237,8 +1237,8 @@ export default function SurveyQuestions() {
                 </div>
               )}
 
-              {/* Allow multiple (MCQ_SINGLE only, root) */}
-              {!isFollowUpMode && newQuestion.type === "MCQ_SINGLE" && (
+              {/* Allow multiple (MCQ_SINGLE only) */}
+              {newQuestion.type === "MCQ_SINGLE" && (
                 <div
                   className="rounded-lg border p-3 flex items-center justify-between gap-3"
                   style={{
@@ -1273,8 +1273,8 @@ export default function SurveyQuestions() {
                 </div>
               )}
 
-              {/* Rating config (root only) */}
-              {!isFollowUpMode && isRatingType && (
+              {/* Rating config */}
+              {isRatingType && (
                 <div
                   className="rounded-lg border p-3 md:p-4 space-y-3"
                   style={{
