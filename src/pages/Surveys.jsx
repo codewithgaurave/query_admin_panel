@@ -61,6 +61,7 @@ export default function Surveys() {
 
   // ✅ NEW: users for assignment
   const [allUsers, setAllUsers] = useState([]);
+  const [allQCs, setAllQCs] = useState([]); // ✅ QCs state
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState("");
 
@@ -91,6 +92,7 @@ export default function Surveys() {
     allowedQuestionTypes: [],
     // ✅ NEW: selected users for this survey
     assignedUserIds: [],
+    assignedQCIds: [], // ✅ QCs assignment array
   };
 
   const [newSurvey, setNewSurvey] = useState(emptySurveyForm);
@@ -116,17 +118,21 @@ export default function Surveys() {
     }
   };
 
-  // ✅ users (sirf SURVEY_USER / active use karenge assignment ke liye)
+  // ✅ users (sirf SURVEY_USER & QUALITY_ENGINEER)
   const loadUsers = async () => {
     try {
       setUsersLoading(true);
       setUsersError("");
       const res = await listUsers(); // { users }
       const users = res.users || [];
-      const filtered = users.filter(
+      const filteredUsers = users.filter(
         (u) => u.role === "SURVEY_USER" && u.isActive
       );
-      setAllUsers(filtered);
+      const filteredQCs = users.filter(
+        (u) => u.role === "QUALITY_ENGINEER" && u.isActive
+      );
+      setAllUsers(filteredUsers);
+      setAllQCs(filteredQCs);
     } catch (err) {
       const msg =
         err?.response?.data?.message ||
@@ -257,6 +263,23 @@ export default function Surveys() {
     });
   };
 
+  // ✅ NEW: toggle assigned QC in state
+  const handleToggleAssignedQC = (qcId) => {
+    setNewSurvey((prev) => {
+      const exists = prev.assignedQCIds.includes(qcId);
+      if (exists) {
+        return {
+          ...prev,
+          assignedQCIds: prev.assignedQCIds.filter((id) => id !== qcId),
+        };
+      }
+      return {
+        ...prev,
+        assignedQCIds: [...prev.assignedQCIds, qcId],
+      };
+    });
+  };
+
   const resetForm = () => {
     setNewSurvey(emptySurveyForm);
     setEditingSurveyId(null);
@@ -283,6 +306,10 @@ export default function Surveys() {
       ? survey.assignedUsers.map((u) => u._id || u) // populate ho ya sirf IDs ho, dono handle
       : [];
 
+    const assignedQcIds = Array.isArray(survey.assignedQCs)
+      ? survey.assignedQCs.map((u) => u._id || u)
+      : [];
+
     setNewSurvey((prev) => ({
       ...prev,
       name: survey.name || "",
@@ -307,7 +334,8 @@ export default function Surveys() {
       allowedQuestionTypes: Array.isArray(survey.allowedQuestionTypes)
         ? survey.allowedQuestionTypes
         : [],
-      assignedUserIds: assignedIds, // ✅
+      assignedUserIds: assignedIds,
+      assignedQCIds: assignedQcIds, // ✅
     }));
   };
 
@@ -405,6 +433,11 @@ export default function Surveys() {
             newSurvey.assignedUserIds.length > 0
               ? newSurvey.assignedUserIds
               : [],
+          assignedQCIds:
+            Array.isArray(newSurvey.assignedQCIds) &&
+            newSurvey.assignedQCIds.length > 0
+              ? newSurvey.assignedQCIds
+              : [],
         };
 
         const res = await createSurvey(payload);
@@ -433,6 +466,11 @@ export default function Surveys() {
             Array.isArray(newSurvey.assignedUserIds) &&
             newSurvey.assignedUserIds.length > 0
               ? newSurvey.assignedUserIds
+              : [],
+          assignedQCIds:
+            Array.isArray(newSurvey.assignedQCIds) &&
+            newSurvey.assignedQCIds.length > 0
+              ? newSurvey.assignedQCIds
               : [],
         };
 
@@ -929,6 +967,70 @@ export default function Surveys() {
                 Only selected employees will see this survey in the mobile app.
                 If you select none, this survey will not appear for any survey
                 user (unless you later assign).
+              </p>
+            </div>
+
+            {/* ✅ ASSIGN QCs SECTION (CREATE + EDIT dono me) */}
+            <div className="md:col-span-2 lg:col-span-3">
+              <label className="text-xs font-medium block mb-2 flex items-center gap-1">
+                <FaUsersCog />
+                Assign to Quality Engineers (QC)
+              </label>
+
+              {usersLoading ? (
+                <p
+                  className="text-xs"
+                  style={{ color: themeColors.text }}
+                >
+                  Loading QCs...
+                </p>
+              ) : usersError ? (
+                <p
+                  className="text-xs"
+                  style={{ color: themeColors.danger }}
+                >
+                  {usersError}
+                </p>
+              ) : allQCs.length === 0 ? (
+                <p
+                  className="text-xs"
+                  style={{ color: themeColors.text }}
+                >
+                  No active QUALITY_ENGINEER found to assign.
+                </p>
+              ) : (
+                <div className="max-h-48 overflow-auto border rounded-lg p-2 space-y-1"
+                  style={{ borderColor: themeColors.border }}
+                >
+                  {allQCs.map((u) => {
+                    const checked = newSurvey.assignedQCIds.includes(u._id);
+                    return (
+                      <label
+                        key={u._id}
+                        className="flex items-center gap-2 text-xs cursor-pointer px-2 py-1 rounded-md hover:bg-black/5"
+                        style={{ color: themeColors.text }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => handleToggleAssignedQC(u._id)}
+                          className="w-4 h-4"
+                        />
+                        <span className="font-medium">{u.fullName}</span>
+                        <span className="opacity-70">
+                          ({u.userCode || u.mobile})
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              <p
+                className="mt-1 text-[11px] opacity-70"
+                style={{ color: themeColors.text }}
+              >
+                Only selected QCs will see this survey in the QC panel for verification.
               </p>
             </div>
 
