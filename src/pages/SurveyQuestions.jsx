@@ -125,12 +125,7 @@ export default function SurveyQuestions() {
   };
 
   const handleQChange = (field, value) => {
-    // Follow-up mode me type change allowed nahi (hamesha OPEN_ENDED)
-    if (isFollowUpMode && field === "type") {
-      return;
-    }
-
-    // Question type change pe defaults set karo (sirf root ke liye)
+    // Question type change pe defaults set karo
     if (field === "type") {
       setNewQuestion((prev) => {
         const next = { ...prev, type: value };
@@ -199,62 +194,60 @@ export default function SurveyQuestions() {
       };
 
       if (isFollowUp) {
-        // 🔵 Follow-up hamesha OPEN_ENDED + parent info
-        payload.type = "OPEN_ENDED";
         payload.parentQuestionId = newQuestion.parentQuestionId;
         payload.parentOptionValue = newQuestion.parentOptionValue;
-      } else {
-        // Root question
-        payload.type = newQuestion.type;
+      }
 
-        // options wali types
-        if (needsOptions) {
-          const opts = (newQuestion.options || [])
-            .map((o) => o.trim())
-            .filter(Boolean);
-          if (!opts.length) {
-            toast.error("Please add at least one option.");
-            setCreating(false);
-            return;
-          }
-          payload.options = opts;
+      // Allow any type for both root and follow-up questions
+      payload.type = newQuestion.type;
 
-          // ⭐ Other option controls
-          payload.enableOtherOption = !!newQuestion.enableOtherOption;
-          if (newQuestion.enableOtherOption) {
-            payload.otherOptionLabel =
-              newQuestion.otherOptionLabel?.trim() || "Other";
-          }
+      // options wali types
+      if (needsOptions) {
+        const opts = (newQuestion.options || [])
+          .map((o) => o.trim())
+          .filter(Boolean);
+        if (!opts.length) {
+          toast.error("Please add at least one option.");
+          setCreating(false);
+          return;
+        }
+        payload.options = opts;
+
+        // ⭐ Other option controls
+        payload.enableOtherOption = !!newQuestion.enableOtherOption;
+        if (newQuestion.enableOtherOption) {
+          payload.otherOptionLabel =
+            newQuestion.otherOptionLabel?.trim() || "Other";
+        }
+      }
+
+      // checkbox / mcq
+      if (newQuestion.type === "CHECKBOX") {
+        payload.allowMultiple = true;
+      } else if (newQuestion.type === "MCQ_SINGLE") {
+        payload.allowMultiple = !!newQuestion.allowMultiple;
+      }
+
+      // rating config
+      if (isRatingType) {
+        const min = Number(newQuestion.minRating) || 1;
+        const max = Number(newQuestion.maxRating) || 5;
+        const step = Number(newQuestion.ratingStep) || 1;
+
+        if (max <= min) {
+          toast.error("Max rating should be greater than min rating.");
+          setCreating(false);
+          return;
+        }
+        if (step <= 0) {
+          toast.error("Step should be greater than 0.");
+          setCreating(false);
+          return;
         }
 
-        // checkbox / mcq
-        if (newQuestion.type === "CHECKBOX") {
-          payload.allowMultiple = true;
-        } else if (newQuestion.type === "MCQ_SINGLE") {
-          payload.allowMultiple = !!newQuestion.allowMultiple;
-        }
-
-        // rating config
-        if (isRatingType) {
-          const min = Number(newQuestion.minRating) || 1;
-          const max = Number(newQuestion.maxRating) || 5;
-          const step = Number(newQuestion.ratingStep) || 1;
-
-          if (max <= min) {
-            toast.error("Max rating should be greater than min rating.");
-            setCreating(false);
-            return;
-          }
-          if (step <= 0) {
-            toast.error("Step should be greater than 0.");
-            setCreating(false);
-            return;
-          }
-
-          payload.minRating = min;
-          payload.maxRating = max;
-          payload.ratingStep = step;
-        }
+        payload.minRating = min;
+        payload.maxRating = max;
+        payload.ratingStep = step;
       }
 
       if (!isEditing) {
@@ -517,6 +510,198 @@ export default function SurveyQuestions() {
     : isFollowUpMode
     ? "Add Follow-up Question"
     : "Add Question";
+  const renderQuestionTree = (q, indexLabel, level = 0) => {
+    const optionBased = q.options && q.options.length > 0;
+    const parentId = q._id || q.id;
+
+    return (
+      <div
+        key={parentId}
+        className={`rounded-xl border p-3 md:p-4 flex flex-col gap-2 ${level > 0 ? "mt-2 ml-4 md:ml-6 border-l-4" : ""}`}
+        style={{
+          borderColor: level > 0 ? themeColors.primary : themeColors.border,
+          backgroundColor: level > 0 ? themeColors.background : themeColors.surface,
+        }}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div
+              className="text-xs font-semibold opacity-70"
+              style={{ color: themeColors.text }}
+            >
+              {indexLabel} · {q.type} {level > 0 ? "(Follow-up)" : ""}
+            </div>
+            <div
+              className="text-sm font-medium"
+              style={{ color: themeColors.text }}
+            >
+              {q.questionText}
+            </div>
+            {q.helpText && (
+              <div
+                className="text-xs opacity-70 mt-1"
+                style={{ color: themeColors.text }}
+              >
+                {q.helpText}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <span
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+              style={{
+                backgroundColor: q.required
+                  ? themeColors.success + "20"
+                  : themeColors.border,
+                color: q.required
+                  ? themeColors.success
+                  : themeColors.text,
+              }}
+            >
+              {q.required ? "Required" : "Optional"}
+            </span>
+            {typeof q.order === "number" && level === 0 && (
+              <span
+                className="text-[11px] opacity-70"
+                style={{ color: themeColors.text }}
+              >
+                Order: {q.order}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Options / rating details + nested follow-ups */}
+        {(optionBased || q.type === "RATING") && (
+          <div
+            className="mt-2 pt-2 border-t text-xs"
+            style={{ borderColor: themeColors.border }}
+          >
+            {optionBased && (
+              <div className="mb-2">
+                <span className="font-semibold block mb-1">
+                  Options & Follow-ups:
+                </span>
+                <ol className="space-y-2 pl-1">
+                  {(q.options || []).map((opt, idx) => {
+                    const key = `${parentId}::${opt}`;
+                    const followUps = followUpsByParent[key] || [];
+                    return (
+                      <li
+                        key={`${opt}-${idx}`}
+                        className="flex flex-col gap-1"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-1">
+                            <span
+                              className="font-mono text-[11px] mt-[2px]"
+                              style={{ color: themeColors.text }}
+                            >
+                              {idx + 1}.
+                            </span>
+                            <span
+                              className="text-xs"
+                              style={{ color: themeColors.text }}
+                            >
+                              {opt}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => startAddFollowUp(q, opt)}
+                            className="px-2 py-1 rounded-full border text-[10px] font-semibold"
+                            style={{
+                              borderColor: themeColors.primary,
+                              color: themeColors.primary,
+                              backgroundColor: themeColors.surface,
+                            }}
+                          >
+                            + Follow-up
+                          </button>
+                        </div>
+
+                        {/* Nested follow-up questions */}
+                        {followUps.length > 0 && (
+                          <div className="mt-1 space-y-1">
+                            {followUps.map((fu, fuIdx) => 
+                              renderQuestionTree(fu, `${indexLabel}.${fuIdx + 1}`, level + 1)
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+
+                  {q.enableOtherOption && (
+                    <li className="flex flex-col gap-1 italic">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-1">
+                          <span
+                            className="font-mono text-[11px] mt-[2px]"
+                            style={{ color: themeColors.text }}
+                          >
+                            {(q.options?.length || 0) + 1}.
+                          </span>
+                          <span
+                            className="text-xs"
+                            style={{ color: themeColors.primary }}
+                          >
+                            {q.otherOptionLabel || "Other"} (free text)
+                          </span>
+                        </div>
+                      </div>
+                    </li>
+                  )}
+                </ol>
+              </div>
+            )}
+            {q.type === "RATING" && (
+              <div>
+                <span className="font-semibold">Rating:</span>{" "}
+                {q.minRating} to {q.maxRating} (step {q.ratingStep})
+              </div>
+            )}
+            {["MCQ_SINGLE", "CHECKBOX"].includes(q.type) && (
+              <div>
+                <span className="font-semibold">Multiple:</span>{" "}
+                {q.allowMultiple ? "Yes" : "No"}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Root actions */}
+        <div className="mt-2 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => startEditQuestion(q)}
+            className="px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1"
+            style={{
+              borderColor: themeColors.border,
+              color: themeColors.text,
+              backgroundColor: themeColors.surface,
+            }}
+          >
+            <FaEdit />
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDeleteQuestion(q)}
+            className="px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1"
+            style={{
+              borderColor: themeColors.danger,
+              color: themeColors.danger,
+              backgroundColor: themeColors.surface,
+            }}
+          >
+            <FaTrash />
+            Delete
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -616,7 +801,7 @@ export default function SurveyQuestions() {
                     color: themeColors.primary,
                   }}
                 >
-                  Follow-up · Open Ended
+                  Follow-up · {selectedTypeMeta?.label || newQuestion.type}
                 </span>
                 <span style={{ color: themeColors.text }}>
                   For option{" "}
@@ -682,50 +867,48 @@ export default function SurveyQuestions() {
                 />
               </div>
 
-              {/* Type Pills (sirf root ke liye) */}
-              {!isFollowUpMode && (
-                <div>
-                  <label className="text-xs font-medium block mb-2">
-                    Question Type *
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {QUESTION_TYPES.map((t) => {
-                      const selected = newQuestion.type === t.value;
-                      return (
-                        <button
-                          key={t.value}
-                          type="button"
-                          onClick={() => handleQChange("type", t.value)}
-                          className="px-3 py-1.5 rounded-full border text-xs flex items-center gap-1"
-                          style={{
-                            borderColor: selected
-                              ? themeColors.primary
-                              : themeColors.border,
-                            backgroundColor: selected
-                              ? themeColors.primary + "22"
-                              : themeColors.surface,
-                            color: selected
-                              ? themeColors.primary
-                              : themeColors.text,
-                          }}
-                        >
-                          {selected && <FaCheckCircle />}
-                          {t.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {selectedTypeMeta && (
-                    <p
-                      className="mt-1 text-[11px] flex items-center gap-1 opacity-75"
-                      style={{ color: themeColors.text }}
-                    >
-                      <FaInfoCircle className="inline-block" />
-                      {selectedTypeMeta.sub}
-                    </p>
-                  )}
+              {/* Type Pills */}
+              <div>
+                <label className="text-xs font-medium block mb-2">
+                  Question Type *
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {QUESTION_TYPES.map((t) => {
+                    const selected = newQuestion.type === t.value;
+                    return (
+                      <button
+                        key={t.value}
+                        type="button"
+                        onClick={() => handleQChange("type", t.value)}
+                        className="px-3 py-1.5 rounded-full border text-xs flex items-center gap-1"
+                        style={{
+                          borderColor: selected
+                            ? themeColors.primary
+                            : themeColors.border,
+                          backgroundColor: selected
+                            ? themeColors.primary + "22"
+                            : themeColors.surface,
+                          color: selected
+                            ? themeColors.primary
+                            : themeColors.text,
+                        }}
+                      >
+                        {selected && <FaCheckCircle />}
+                        {t.label}
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
+                {selectedTypeMeta && (
+                  <p
+                    className="mt-1 text-[11px] flex items-center gap-1 opacity-75"
+                    style={{ color: themeColors.text }}
+                  >
+                    <FaInfoCircle className="inline-block" />
+                    {selectedTypeMeta.sub}
+                  </p>
+                )}
+              </div>
 
               {/* Order + Required */}
               <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] gap-3">
@@ -1227,276 +1410,7 @@ export default function SurveyQuestions() {
             {rootQuestions
               .slice()
               .sort((a, b) => (a.order || 0) - (b.order || 0))
-              .map((q, index) => {
-                const optionBased = q.options && q.options.length > 0;
-                const parentId = q._id || q.id;
-
-                return (
-                  <div
-                    key={parentId}
-                    className="rounded-xl border p-3 md:p-4 flex flex-col gap-2"
-                    style={{
-                      borderColor: themeColors.border,
-                      backgroundColor: themeColors.surface,
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div
-                          className="text-xs font-semibold opacity-70"
-                          style={{ color: themeColors.text }}
-                        >
-                          Q{index + 1} · {q.type}
-                        </div>
-                        <div
-                          className="text-sm font-medium"
-                          style={{ color: themeColors.text }}
-                        >
-                          {q.questionText}
-                        </div>
-                        {q.helpText && (
-                          <div
-                            className="text-xs opacity-70 mt-1"
-                            style={{ color: themeColors.text }}
-                          >
-                            {q.helpText}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <span
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold"
-                          style={{
-                            backgroundColor: q.required
-                              ? themeColors.success + "20"
-                              : themeColors.border,
-                            color: q.required
-                              ? themeColors.success
-                              : themeColors.text,
-                          }}
-                        >
-                          {q.required ? "Required" : "Optional"}
-                        </span>
-                        {typeof q.order === "number" && (
-                          <span
-                            className="text-[11px] opacity-70"
-                            style={{ color: themeColors.text }}
-                          >
-                            Order: {q.order}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Options / rating details + nested follow-ups */}
-                    {(optionBased || q.type === "RATING") && (
-                      <div
-                        className="mt-2 pt-2 border-t text-xs"
-                        style={{ borderColor: themeColors.border }}
-                      >
-                        {optionBased && (
-                          <div className="mb-2">
-                            <span className="font-semibold block mb-1">
-                              Options & Follow-ups:
-                            </span>
-                            <ol className="space-y-2 pl-1">
-                              {(q.options || []).map((opt, idx) => {
-                                const key = `${parentId}::${opt}`;
-                                const followUps = followUpsByParent[key] || [];
-                                return (
-                                  <li
-                                    key={`${opt}-${idx}`}
-                                    className="flex flex-col gap-1"
-                                  >
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="flex items-start gap-1">
-                                        <span
-                                          className="font-mono text-[11px] mt-[2px]"
-                                          style={{ color: themeColors.text }}
-                                        >
-                                          {idx + 1}.
-                                        </span>
-                                        <span
-                                          className="text-xs"
-                                          style={{ color: themeColors.text }}
-                                        >
-                                          {opt}
-                                        </span>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          startAddFollowUp(q, opt)
-                                        }
-                                        className="px-2 py-1 rounded-full border text-[10px] font-semibold"
-                                        style={{
-                                          borderColor: themeColors.primary,
-                                          color: themeColors.primary,
-                                          backgroundColor:
-                                            themeColors.surface,
-                                        }}
-                                      >
-                                        + Follow-up
-                                      </button>
-                                    </div>
-
-                                    {/* Nested follow-up questions */}
-                                    {followUps.length > 0 && (
-                                      <div className="ml-5 mt-1 space-y-1">
-                                        {followUps.map((fu) => (
-                                          <div
-                                            key={fu._id || fu.id}
-                                            className="flex items-start justify-between gap-2 rounded-lg px-2 py-1"
-                                            style={{
-                                              backgroundColor:
-                                                themeColors.background,
-                                            }}
-                                          >
-                                            <div>
-                                              <span
-                                                className="text-[11px] font-semibold mr-1"
-                                                style={{
-                                                  color: themeColors.text,
-                                                }}
-                                              >
-                                                ↳
-                                              </span>
-                                              <span
-                                                className="text-[11px]"
-                                                style={{
-                                                  color: themeColors.text,
-                                                }}
-                                              >
-                                                {fu.questionText}
-                                              </span>
-                                              {fu.helpText && (
-                                                <div
-                                                  className="text-[10px] opacity-70"
-                                                  style={{
-                                                    color: themeColors.text,
-                                                  }}
-                                                >
-                                                  {fu.helpText}
-                                                </div>
-                                              )}
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  startEditQuestion(fu)
-                                                }
-                                                className="px-2 py-0.5 rounded-lg border text-[10px] inline-flex items-center gap-1"
-                                                style={{
-                                                  borderColor:
-                                                    themeColors.border,
-                                                  color: themeColors.text,
-                                                  backgroundColor:
-                                                    themeColors.surface,
-                                                }}
-                                              >
-                                                <FaEdit />
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  handleDeleteQuestion(fu)
-                                                }
-                                                className="px-2 py-0.5 rounded-lg border text-[10px] inline-flex items-center gap-1"
-                                                style={{
-                                                  borderColor:
-                                                    themeColors.danger,
-                                                  color: themeColors.danger,
-                                                  backgroundColor:
-                                                    themeColors.surface,
-                                                }}
-                                              >
-                                                <FaTrash />
-                                              </button>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </li>
-                                );
-                              })}
-
-                              {q.enableOtherOption && (
-                                <li className="flex flex-col gap-1 italic">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="flex items-start gap-1">
-                                      <span
-                                        className="font-mono text-[11px] mt-[2px]"
-                                        style={{ color: themeColors.text }}
-                                      >
-                                        {(q.options?.length || 0) + 1}.
-                                      </span>
-                                      <span
-                                        className="text-xs"
-                                        style={{
-                                          color: themeColors.primary,
-                                        }}
-                                      >
-                                        {q.otherOptionLabel || "Other"} (free
-                                        text)
-                                      </span>
-                                    </div>
-                                    {/* Other ke follow-ups bhi possible hai, but yahan parentOptionValue exactly label hona chahiye */}
-                                  </div>
-                                </li>
-                              )}
-                            </ol>
-                          </div>
-                        )}
-                        {q.type === "RATING" && (
-                          <div>
-                            <span className="font-semibold">Rating:</span>{" "}
-                            {q.minRating} to {q.maxRating} (step{" "}
-                            {q.ratingStep})
-                          </div>
-                        )}
-                        {["MCQ_SINGLE", "CHECKBOX"].includes(q.type) && (
-                          <div>
-                            <span className="font-semibold">Multiple:</span>{" "}
-                            {q.allowMultiple ? "Yes" : "No"}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Root actions */}
-                    <div className="mt-2 flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => startEditQuestion(q)}
-                        className="px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1"
-                        style={{
-                          borderColor: themeColors.border,
-                          color: themeColors.text,
-                          backgroundColor: themeColors.surface,
-                        }}
-                      >
-                        <FaEdit />
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteQuestion(q)}
-                        className="px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1"
-                        style={{
-                          borderColor: themeColors.danger,
-                          color: themeColors.danger,
-                          backgroundColor: themeColors.surface,
-                        }}
-                      >
-                        <FaTrash />
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+              .map((q, index) => renderQuestionTree(q, `Q${index + 1}`, 0))}
           </div>
         )}
       </div>
