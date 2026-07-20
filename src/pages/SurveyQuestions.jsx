@@ -572,11 +572,41 @@ export default function SurveyQuestions() {
         </div>
 
         {/* Options / rating details + nested follow-ups */}
-        {(optionBased || q.type === "RATING") && (
+        {(optionBased || q.type === "RATING" || q.type === "OPEN_ENDED") && (
           <div
             className="mt-2 pt-2 border-t text-xs"
             style={{ borderColor: themeColors.border }}
           >
+            {q.type === "OPEN_ENDED" && (
+              <div className="mb-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-[11px] opacity-75 italic">
+                    Any text answer triggers follow-up
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => startAddFollowUp(q, 'ANY_TEXT')}
+                    className="px-2 py-1 rounded-full border text-[10px] font-semibold"
+                    style={{
+                      borderColor: themeColors.primary,
+                      color: themeColors.primary,
+                      backgroundColor: themeColors.surface,
+                    }}
+                  >
+                    + Follow-up
+                  </button>
+                </div>
+                {/* Nested follow-up questions for OPEN_ENDED */}
+                {followUpsByParent[`${parentId}::ANY_TEXT`]?.length > 0 && (
+                  <div className="mt-1 space-y-1">
+                    {followUpsByParent[`${parentId}::ANY_TEXT`].map((fu, fuIdx) => 
+                      renderQuestionTree(fu, `${indexLabel}.${fuIdx + 1}`, level + 1)
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            
             {optionBased && (
               <div className="mb-2">
                 <span className="font-semibold block mb-1">
