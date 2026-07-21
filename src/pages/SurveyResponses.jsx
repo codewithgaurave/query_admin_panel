@@ -43,14 +43,16 @@ const csvEscape = (val) =>
 // Answer text like UI
 const buildAnswerText = (ans) => {
   if (!ans) return "-";
-  if (ans.questionType === "OPEN_ENDED") {
-    return ans.answerText || "-";
+  const parts = [];
+  if (ans.selectedOption) parts.push(ans.selectedOption);
+  if (Array.isArray(ans.selectedOptions) && ans.selectedOptions.length > 0) {
+    const opts = ans.selectedOptions.filter((o) => o !== ans.selectedOption);
+    if (opts.length > 0) parts.push(opts.join(", "));
   }
-  if (ans.questionType === "RATING") {
-    return typeof ans.rating === "number" ? String(ans.rating) : "-";
-  }
-  const opts = ans.selectedOptions || [];
-  return opts.length > 0 ? opts.join(", ") : "-";
+  if (ans.answerText) parts.push(ans.answerText);
+  if (typeof ans.rating === "number") parts.push(`Rating: ${ans.rating}`);
+  if (ans.otherText) parts.push(`(Other: ${ans.otherText})`);
+  return parts.length > 0 ? parts.join(" ") : "-";
 };
 
 export default function SurveyResponses() {
