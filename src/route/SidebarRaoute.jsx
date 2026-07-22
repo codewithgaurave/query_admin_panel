@@ -12,6 +12,7 @@ import {
   FaMapMarkerAlt,    // ⭐ Punch-ins icon
   FaThumbtack,       // ⭐ Pinned questions icon
   FaUserCog,         // Admin Profile icon
+  FaStopCircle,      // Closed surveys icon
 } from "react-icons/fa";
 
 // Existing pages
