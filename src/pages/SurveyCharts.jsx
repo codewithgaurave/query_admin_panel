@@ -413,6 +413,7 @@ export default function SurveyCharts() {
   const [error, setError] = useState("");
   const [surveys, setSurveys] = useState([]); // from listAllPublicSurveyResponses
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ACTIVE"); // Default to ACTIVE surveys only
   const [selectedSurveyId, setSelectedSurveyId] = useState("");
 
   const loadData = async () => {
@@ -423,7 +424,12 @@ export default function SurveyCharts() {
       const list = res.surveys || [];
       setSurveys(list);
       if (list.length && !selectedSurveyId) {
-        setSelectedSurveyId(list[0].surveyId);
+        const activeList = list.filter((s) => !s.status || s.status === "ACTIVE");
+        if (activeList.length) {
+          setSelectedSurveyId(activeList[0].surveyId);
+        } else {
+          setSelectedSurveyId(list[0].surveyId);
+        }
       }
     } catch (err) {
       const msg =
@@ -445,13 +451,20 @@ export default function SurveyCharts() {
   const filteredSurveys = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (surveys || []).filter((s) => {
+      // Filter out CLOSED surveys when statusFilter === 'ACTIVE'
+      if (statusFilter === "ACTIVE") {
+        if (s.status && s.status !== "ACTIVE") return false;
+      } else if (statusFilter === "CLOSED") {
+        if (s.status !== "CLOSED") return false;
+      }
+
       if (!q) return true;
       const values = [s.name, s.surveyCode, s.category, s.projectName]
         .filter(Boolean)
         .map((v) => String(v).toLowerCase());
       return values.some((v) => v.includes(q));
     });
-  }, [surveys, search]);
+  }, [surveys, search, statusFilter]);
 
   const activeSurvey =
     filteredSurveys.find(
@@ -817,19 +830,36 @@ export default function SurveyCharts() {
             borderColor: themeColors.border,
           }}
         >
-          <div className="relative">
-            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60 text-sm" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search survey..."
-              className="w-full pl-9 pr-3 py-2.5 rounded-lg border text-sm"
+          <div className="space-y-2">
+            <div className="relative">
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60 text-sm" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search survey..."
+                className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm"
+                style={{
+                  borderColor: themeColors.border,
+                  backgroundColor: themeColors.background,
+                  color: themeColors.text,
+                }}
+              />
+            </div>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full p-2 rounded-lg border text-xs font-semibold cursor-pointer"
               style={{
                 borderColor: themeColors.border,
                 backgroundColor: themeColors.background,
                 color: themeColors.text,
               }}
-            />
+            >
+              <option value="ACTIVE">🟢 Active Surveys Only (Default)</option>
+              <option value="ALL">📋 All Surveys (Including Closed)</option>
+              <option value="CLOSED">🔴 Closed Surveys Only</option>
+            </select>
           </div>
 
           <div className="text-xs md:text-sm font-semibold flex items-center justify-between mt-1">

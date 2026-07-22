@@ -61,12 +61,20 @@ const routes = [
     icon: FaMapMarkerAlt,
   },
 
-  // ⭐ Surveys main page
+  // ⭐ Active Surveys main page
   {
     path: "/surveys",
     component: Surveys,
-    name: "Surveys",
+    name: "Active Surveys",
     icon: FaClipboardList,
+  },
+
+  // ⭐ Closed / Inactive Surveys page
+  {
+    path: "/closed-surveys",
+    component: Surveys,
+    name: "Closed Surveys",
+    icon: FaStopCircle,
   },
 
   // ⭐ Survey responses dashboard

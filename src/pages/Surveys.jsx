@@ -1,6 +1,5 @@
-// src/pages/Surveys.jsx
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import {
   FaClipboardList,
@@ -54,10 +53,22 @@ const fmtDate = (d) => {
 
 export default function Surveys() {
   const { themeColors } = useTheme();
+  const location = useLocation();
 
   const [surveys, setSurveys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const isClosedRoute = location.pathname.includes("closed");
+  const [activeTab, setActiveTab] = useState(isClosedRoute ? "CLOSED" : "ACTIVE");
+
+  useEffect(() => {
+    if (location.pathname.includes("closed")) {
+      setActiveTab("CLOSED");
+    } else {
+      setActiveTab("ACTIVE");
+    }
+  }, [location.pathname]);
 
   // ✅ NEW: users for assignment
   const [allUsers, setAllUsers] = useState([]);
@@ -162,10 +173,17 @@ export default function Surveys() {
   const filteredSurveys = useMemo(() => {
     const q = search.trim().toLowerCase();
     return surveys.filter((s) => {
-      const statusOk =
-        statusFilter === "All"
-          ? true
-          : String(s.status) === String(statusFilter);
+      let statusOk = true;
+      if (activeTab === "ACTIVE") {
+        statusOk = String(s.status) === "ACTIVE";
+      } else if (activeTab === "CLOSED") {
+        statusOk = String(s.status) === "CLOSED";
+      } else if (activeTab === "DRAFT") {
+        statusOk = String(s.status) === "DRAFT";
+      } else if (statusFilter !== "All") {
+        statusOk = String(s.status) === String(statusFilter);
+      }
+
       const catOk =
         categoryFilter === "All"
           ? true
@@ -186,7 +204,7 @@ export default function Surveys() {
 
       return statusOk && catOk && searchOk;
     });
-  }, [surveys, search, statusFilter, categoryFilter]);
+  }, [surveys, search, activeTab, statusFilter, categoryFilter]);
 
   const stats = useMemo(() => {
     const total = surveys.length;
@@ -538,14 +556,15 @@ export default function Surveys() {
             className="text-2xl md:text-3xl font-bold tracking-tight"
             style={{ color: themeColors.text }}
           >
-            Survey Management
+            {isClosedRoute || activeTab === "CLOSED" ? "Closed / Inactive Surveys" : "Active Survey Management"}
           </h1>
           <p
             className="text-sm mt-1 opacity-75"
             style={{ color: themeColors.text }}
           >
-            Create surveys and manage survey questions for the auction/survey
-            workflow.
+            {isClosedRoute || activeTab === "CLOSED"
+              ? "View and manage all archived/closed surveys."
+              : "Manage all currently active surveys in the system."}
           </p>
         </div>
         <button
@@ -567,6 +586,66 @@ export default function Surveys() {
             : isEditing
             ? "Edit Survey"
             : "Create Survey"}
+        </button>
+      </div>
+
+      {/* Active vs Closed Tabs */}
+      <div className="flex items-center gap-2 border-b pb-3" style={{ borderColor: themeColors.border }}>
+        <button
+          type="button"
+          onClick={() => setActiveTab("ACTIVE")}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
+            activeTab === "ACTIVE" ? "shadow-sm" : "opacity-75 hover:opacity-100"
+          }`}
+          style={{
+            backgroundColor: activeTab === "ACTIVE" ? themeColors.primary : "transparent",
+            color: activeTab === "ACTIVE" ? "#ffffff" : themeColors.text,
+            border: activeTab === "ACTIVE" ? "none" : `1px solid ${themeColors.border}`,
+          }}
+        >
+          <FaPlay className="text-xs" />
+          Active Surveys
+          <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-white/20">
+            {stats.find((s) => s.title === "Active")?.value || 0}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("CLOSED")}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
+            activeTab === "CLOSED" ? "shadow-sm" : "opacity-75 hover:opacity-100"
+          }`}
+          style={{
+            backgroundColor: activeTab === "CLOSED" ? themeColors.danger || "#ef4444" : "transparent",
+            color: activeTab === "CLOSED" ? "#ffffff" : themeColors.text,
+            border: activeTab === "CLOSED" ? "none" : `1px solid ${themeColors.border}`,
+          }}
+        >
+          <FaStopCircle className="text-xs" />
+          Closed Surveys
+          <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-white/20">
+            {stats.find((s) => s.title === "Closed")?.value || 0}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("ALL")}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all ${
+            activeTab === "ALL" ? "shadow-sm" : "opacity-75 hover:opacity-100"
+          }`}
+          style={{
+            backgroundColor: activeTab === "ALL" ? themeColors.surface : "transparent",
+            color: themeColors.text,
+            border: activeTab === "ALL" ? `1px solid ${themeColors.primary}` : `1px solid ${themeColors.border}`,
+          }}
+        >
+          <FaClipboardList className="text-xs" />
+          All Surveys
+          <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-black/10">
+            {surveys.length}
+          </span>
         </button>
       </div>
 
