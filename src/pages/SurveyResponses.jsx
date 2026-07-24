@@ -13,6 +13,9 @@ import {
   FaCheckCircle,
   FaMapMarkerAlt,
   FaFileExcel,
+  FaCopy,
+  FaShareAlt,
+  FaExternalLinkAlt,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -31,6 +34,70 @@ const fmtDateTime = (d) => {
     })}`;
   } catch {
     return "-";
+  }
+};
+
+const handleCopyAudioLink = (audioUrl) => {
+  if (!audioUrl) {
+    toast.error("Audio URL not available");
+    return;
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard
+      .writeText(audioUrl)
+      .then(() => {
+        toast.success("Audio link copied to clipboard!");
+      })
+      .catch(() => {
+        fallbackCopyText(audioUrl);
+      });
+  } else {
+    fallbackCopyText(audioUrl);
+  }
+};
+
+const fallbackCopyText = (text) => {
+  try {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.opacity = "0";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const successful = document.execCommand("copy");
+    document.body.removeChild(textArea);
+    if (successful) {
+      toast.success("Audio link copied to clipboard!");
+    } else {
+      toast.error("Failed to copy link");
+    }
+  } catch (err) {
+    toast.error("Could not copy link");
+  }
+};
+
+const handleShareAudioLink = async (audioUrl, title = "Audio Recording") => {
+  if (!audioUrl) {
+    toast.error("Audio URL not available");
+    return;
+  }
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: title,
+        text: `Audio Recording Link: ${audioUrl}`,
+        url: audioUrl,
+      });
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        handleCopyAudioLink(audioUrl);
+      }
+    }
+  } else {
+    handleCopyAudioLink(audioUrl);
   }
 };
 
@@ -722,29 +789,61 @@ export default function SurveyResponses() {
 
                     {resp.audioUrl && (
                       <div className="flex flex-col items-start sm:items-end gap-2 min-w-[220px]">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setOpenAudioId((prev) =>
-                              prev === respKey ? null : respKey
-                            )
-                          }
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-[11px] font-semibold"
-                          style={{
-                            borderColor: themeColors.primary,
-                            color: themeColors.primary,
-                            backgroundColor: themeColors.background,
-                          }}
-                        >
-                          <FaHeadphones />
-                          {isAudioOpen ? "Hide Audio" : "Listen Audio"}
-                        </button>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOpenAudioId((prev) =>
+                                prev === respKey ? null : respKey
+                              )
+                            }
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer"
+                            style={{
+                              borderColor: themeColors.primary,
+                              color: themeColors.primary,
+                              backgroundColor: themeColors.background,
+                            }}
+                          >
+                            <FaHeadphones />
+                            {isAudioOpen ? "Hide Audio" : "Listen Audio"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCopyAudioLink(resp.audioUrl)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer"
+                            style={{
+                              borderColor: themeColors.border,
+                              color: themeColors.text,
+                              backgroundColor: themeColors.surface,
+                            }}
+                            title="Copy Audio Link"
+                          >
+                            <FaCopy />
+                            <span>Copy Link</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleShareAudioLink(
+                                resp.audioUrl,
+                                `Audio Entry #${resp.responseId}`
+                              )
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 cursor-pointer"
+                            title="Share Link"
+                          >
+                            <FaShareAlt />
+                            <span>Share</span>
+                          </button>
+                        </div>
 
                         {isAudioOpen && (
                           <audio
                             controls
                             autoPlay
-                            className="w-full"
+                            className="w-full mt-1"
                             src={resp.audioUrl}
                           >
                             Your browser does not support the audio element.
