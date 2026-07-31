@@ -15,6 +15,9 @@ import {
   FaListUl,
   FaTrash,
   FaEdit,
+  FaUpload,
+  FaImage,
+  FaTimes,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -22,6 +25,7 @@ import {
   addSurveyQuestion,
   updateSurveyQuestion,
   deleteSurveyQuestion,
+  uploadPartySymbol,
 } from "../apis/surveys";
 
 const QUESTION_TYPES = [
@@ -46,12 +50,15 @@ export default function SurveyQuestions() {
   // create / edit question
   const [creating, setCreating] = useState(false);
   const [editingQuestionId, setEditingQuestionId] = useState(null);
+  const [uploadingSymbolIndex, setUploadingSymbolIndex] = useState(null);
+  const [showBulkInput, setShowBulkInput] = useState(false);
   const isEditing = !!editingQuestionId;
 
   const [newQuestion, setNewQuestion] = useState({
     questionText: "",
     type: "OPEN_ENDED",
     options: [], // array of option strings
+    optionSymbols: [], // array of { option: string, symbolUrl: string }
     allowMultiple: false,
     minRating: 1,
     maxRating: 5,
@@ -106,10 +113,12 @@ export default function SurveyQuestions() {
 
   const resetQuestionForm = () => {
     setEditingQuestionId(null);
+    setShowBulkInput(false);
     setNewQuestion({
       questionText: "",
       type: "OPEN_ENDED",
       options: [],
+      optionSymbols: [],
       allowMultiple: false,
       minRating: 1,
       maxRating: 5,
@@ -122,6 +131,47 @@ export default function SurveyQuestions() {
       parentQuestionId: null,
       parentOptionValue: "",
     });
+  };
+
+  const handleSymbolUploadForOption = async (index, file) => {
+    if (!file) return;
+    const optionName = (newQuestion.options[index] || "").trim();
+    if (!optionName) {
+      toast.error("Please enter option text before uploading a party symbol.");
+      return;
+    }
+
+    try {
+      setUploadingSymbolIndex(index);
+      const res = await uploadPartySymbol(file);
+      const url = res.url;
+      if (url) {
+        setNewQuestion((prev) => {
+          const currentSymbols = prev.optionSymbols ? [...prev.optionSymbols] : [];
+          const existingIdx = currentSymbols.findIndex((s) => s.option === optionName);
+          if (existingIdx >= 0) {
+            currentSymbols[existingIdx] = { option: optionName, symbolUrl: url };
+          } else {
+            currentSymbols.push({ option: optionName, symbolUrl: url });
+          }
+          return { ...prev, optionSymbols: currentSymbols };
+        });
+        toast.success(`Party symbol uploaded for "${optionName}"!`);
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || "Failed to upload party symbol.";
+      toast.error(msg);
+    } finally {
+      setUploadingSymbolIndex(null);
+    }
+  };
+
+  const handleRemoveSymbolForOption = (index) => {
+    const optionName = (newQuestion.options[index] || "").trim();
+    setNewQuestion((prev) => ({
+      ...prev,
+      optionSymbols: (prev.optionSymbols || []).filter((s) => s.option !== optionName),
+    }));
   };
 
   const handleQChange = (field, value) => {
@@ -212,6 +262,11 @@ export default function SurveyQuestions() {
           return;
         }
         payload.options = opts;
+        if (Array.isArray(newQuestion.optionSymbols)) {
+          payload.optionSymbols = newQuestion.optionSymbols.filter(
+            (s) => opts.includes(s.option) && s.symbolUrl
+          );
+        }
 
         // ⭐ Other option controls
         payload.enableOtherOption = !!newQuestion.enableOtherOption;
@@ -296,6 +351,7 @@ export default function SurveyQuestions() {
               questionText: "",
               type: prev.type,
               options: nextOptions,
+              optionSymbols: [],
               allowMultiple: false,
               minRating: prev.type === "RATING" ? prev.minRating : 1,
               maxRating: prev.type === "RATING" ? prev.maxRating : 5,
@@ -355,6 +411,7 @@ export default function SurveyQuestions() {
         needsOpts.includes(q.type) && q.options && q.options.length
           ? q.options
           : [],
+      optionSymbols: q.optionSymbols || [],
       allowMultiple: !!q.allowMultiple,
       minRating: q.type === "RATING" ? q.minRating ?? 1 : 1,
       maxRating: q.type === "RATING" ? q.maxRating ?? 5 : 5,
@@ -622,15 +679,28 @@ export default function SurveyQuestions() {
                         className="flex flex-col gap-1"
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-start gap-1">
+                          <div className="flex items-center gap-1.5">
                             <span
                               className="font-mono text-[11px] mt-[2px]"
                               style={{ color: themeColors.text }}
                             >
                               {idx + 1}.
                             </span>
+                            {(() => {
+                              const symObj = (q.optionSymbols || []).find(
+                                (s) => s.option === opt && s.symbolUrl
+                              );
+                              return symObj ? (
+                                <img
+                                  src={symObj.symbolUrl}
+                                  alt={opt}
+                                  className="w-6 h-6 object-contain rounded border bg-white p-0.5"
+                                  title={`${opt} party symbol`}
+                                />
+                              ) : null;
+                            })()}
                             <span
-                              className="text-xs"
+                              className="text-xs font-medium"
                               style={{ color: themeColors.text }}
                             >
                               {opt}
@@ -1032,42 +1102,203 @@ export default function SurveyQuestions() {
                     />
                   </div>
 
-                  <div>
-                    <p
-                      className="text-xs font-semibold"
-                      style={{ color: themeColors.text }}
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div>
+                      <p
+                        className="text-xs font-semibold"
+                        style={{ color: themeColors.text }}
+                      >
+                        Options & Party Symbols *
+                      </p>
+                      <p
+                        className="text-[11px] opacity-70"
+                        style={{ color: themeColors.text }}
+                      >
+                        Add options and upload optional party symbols/logos for each option.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkInput(!showBulkInput)}
+                      className="text-[11px] underline opacity-80"
+                      style={{ color: themeColors.primary }}
                     >
-                      Options *
-                    </p>
-                    <p
-                      className="text-[11px] opacity-70"
-                      style={{ color: themeColors.text }}
-                    >
-                      Har line ek option hogi. Enter dabate jao, nayi line pe
-                      naya option ban jayega.
-                    </p>
+                      {showBulkInput ? "Use List Builder" : "Bulk Paste"}
+                    </button>
                   </div>
 
-                  {/* Single textarea for all options (one per line) */}
-                  <textarea
-                    rows={Math.max(3, (newQuestion.options || []).length || 3)}
-                    value={optionsText}
-                    onChange={(e) => {
-                      const lines = e.target.value.split("\n");
-                      setNewQuestion((prev) => ({
-                        ...prev,
-                        options: lines,
-                      }));
-                    }}
-                    className="w-full px-3 py-2 rounded-lg border text-xs"
-                    placeholder={"Option 1\nOption 2\nOption 3"}
-                    style={{
-                      borderColor: themeColors.border,
-                      backgroundColor: themeColors.surface,
-                      color: themeColors.text,
-                      whiteSpace: "pre-wrap",
-                    }}
-                  />
+                  {showBulkInput ? (
+                    <textarea
+                      rows={Math.max(3, (newQuestion.options || []).length || 3)}
+                      value={optionsText}
+                      onChange={(e) => {
+                        const lines = e.target.value.split("\n");
+                        setNewQuestion((prev) => ({
+                          ...prev,
+                          options: lines,
+                        }));
+                      }}
+                      className="w-full px-3 py-2 rounded-lg border text-xs"
+                      placeholder={"Option 1\nOption 2\nOption 3"}
+                      style={{
+                        borderColor: themeColors.border,
+                        backgroundColor: themeColors.surface,
+                        color: themeColors.text,
+                        whiteSpace: "pre-wrap",
+                      }}
+                    />
+                  ) : (
+                    <div className="space-y-2">
+                      {((newQuestion.options && newQuestion.options.length > 0)
+                        ? newQuestion.options
+                        : [""]
+                      ).map((opt, idx) => {
+                        const symObj = (newQuestion.optionSymbols || []).find(
+                          (s) => s.option === opt && s.symbolUrl
+                        );
+                        return (
+                          <div
+                            key={idx}
+                            className="flex items-center gap-2 p-2 border rounded-lg"
+                            style={{
+                              borderColor: themeColors.border,
+                              backgroundColor: themeColors.surface,
+                            }}
+                          >
+                            <span
+                              className="text-xs font-semibold w-5 text-center"
+                              style={{ color: themeColors.text }}
+                            >
+                              {idx + 1}.
+                            </span>
+                            <input
+                              type="text"
+                              value={opt}
+                              onChange={(e) => {
+                                const newOpts = [
+                                  ...(newQuestion.options || []),
+                                ];
+                                if (!newOpts.length) newOpts.push("");
+                                const oldVal = newOpts[idx];
+                                const newVal = e.target.value;
+                                newOpts[idx] = newVal;
+                                setNewQuestion((prev) => {
+                                  const symbols = (
+                                    prev.optionSymbols || []
+                                  ).map((s) =>
+                                    s.option === oldVal
+                                      ? { ...s, option: newVal }
+                                      : s
+                                  );
+                                  return {
+                                    ...prev,
+                                    options: newOpts,
+                                    optionSymbols: symbols,
+                                  };
+                                });
+                              }}
+                              placeholder={`Option ${idx + 1}`}
+                              className="flex-1 px-2.5 py-1.5 rounded-lg border text-xs"
+                              style={{
+                                borderColor: themeColors.border,
+                                backgroundColor: themeColors.background,
+                                color: themeColors.text,
+                              }}
+                            />
+
+                            {/* Party Symbol Upload / Preview */}
+                            {uploadingSymbolIndex === idx ? (
+                              <span className="text-[11px] opacity-70 animate-pulse px-2">
+                                Uploading...
+                              </span>
+                            ) : symObj ? (
+                              <div className="flex items-center gap-1 border rounded-lg p-1" style={{ borderColor: themeColors.border, backgroundColor: themeColors.background }}>
+                                <img
+                                  src={symObj.symbolUrl}
+                                  alt={opt}
+                                  className="w-7 h-7 object-contain rounded bg-white"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleRemoveSymbolForOption(idx)
+                                  }
+                                  className="p-1 text-red-500 hover:text-red-700 text-xs"
+                                  title="Remove Party Symbol"
+                                >
+                                  <FaTimes />
+                                </button>
+                              </div>
+                            ) : (
+                              <label
+                                className="px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer inline-flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+                                style={{
+                                  borderColor: themeColors.primary,
+                                  color: themeColors.primary,
+                                  backgroundColor: themeColors.surface,
+                                }}
+                                title="Upload Party Symbol / Logo (Optional)"
+                              >
+                                <FaUpload className="text-[10px]" />
+                                <span>Party Symbol</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    if (e.target.files && e.target.files[0]) {
+                                      handleSymbolUploadForOption(
+                                        idx,
+                                        e.target.files[0]
+                                      );
+                                    }
+                                  }}
+                                />
+                              </label>
+                            )}
+
+                            {/* Delete Option Row */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newOpts = (
+                                  newQuestion.options || []
+                                ).filter((_, i) => i !== idx);
+                                setNewQuestion((prev) => ({
+                                  ...prev,
+                                  options: newOpts,
+                                  optionSymbols: (
+                                    prev.optionSymbols || []
+                                  ).filter((s) => s.option !== opt),
+                                }));
+                              }}
+                              className="p-1.5 rounded-lg text-red-500 hover:bg-red-50"
+                              title="Delete Option"
+                            >
+                              <FaTrash className="text-xs" />
+                            </button>
+                          </div>
+                        );
+                      })}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewQuestion((prev) => ({
+                            ...prev,
+                            options: [...(prev.options || []), ""],
+                          }));
+                        }}
+                        className="mt-2 w-full py-1.5 rounded-lg border border-dashed text-xs font-semibold flex items-center justify-center gap-1"
+                        style={{
+                          borderColor: themeColors.primary,
+                          color: themeColors.primary,
+                        }}
+                      >
+                        <FaPlus className="text-[10px]" /> Add Option
+                      </button>
+                    </div>
+                  )}
 
                   {/* Preset buttons for YES/NO & LIKERT */}
                   <div className="mt-3 flex flex-wrap gap-2">

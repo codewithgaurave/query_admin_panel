@@ -160,3 +160,19 @@ export const getUserSurveySummary = async (userCode) => {
   // backend: { user, surveys: [...] }
   return data;
 };
+
+/**
+ * POST /survey/upload-symbol
+ * Admin: upload party symbol image file
+ */
+export const uploadPartySymbol = async (file) => {
+  const formData = new FormData();
+  formData.append("image", file);
+  const { data } = await http.post("/survey/upload-symbol", formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+      ...authHeaders(),
+    },
+  });
+  return data;
+};
