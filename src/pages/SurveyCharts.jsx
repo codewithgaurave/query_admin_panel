@@ -11,6 +11,8 @@ import {
   FaFileExcel,
   FaFilePdf,
   FaThumbtack, // ⭐ pin icon
+  FaCalendarAlt,
+  FaTimes,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -416,6 +418,64 @@ export default function SurveyCharts() {
   const [statusFilter, setStatusFilter] = useState("ACTIVE"); // Default to ACTIVE surveys only
   const [selectedSurveyId, setSelectedSurveyId] = useState("");
 
+  // Date filter state
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [datePreset, setDatePreset] = useState("ALL");
+
+  const formatDateStr = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleApplyPreset = (preset) => {
+    setDatePreset(preset);
+    const now = new Date();
+
+    if (preset === "ALL") {
+      setStartDate("");
+      setEndDate("");
+    } else if (preset === "TODAY") {
+      const todayStr = formatDateStr(now);
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === "YESTERDAY") {
+      const yest = new Date(now);
+      yest.setDate(yest.getDate() - 1);
+      const yestStr = formatDateStr(yest);
+      setStartDate(yestStr);
+      setEndDate(yestStr);
+    } else if (preset === "LAST_7") {
+      const endStr = formatDateStr(now);
+      const start = new Date(now);
+      start.setDate(start.getDate() - 6);
+      const startStr = formatDateStr(start);
+      setStartDate(startStr);
+      setEndDate(endStr);
+    } else if (preset === "LAST_30") {
+      const endStr = formatDateStr(now);
+      const start = new Date(now);
+      start.setDate(start.getDate() - 29);
+      const startStr = formatDateStr(start);
+      setStartDate(startStr);
+      setEndDate(endStr);
+    } else if (preset === "THIS_MONTH") {
+      const endStr = formatDateStr(now);
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startStr = formatDateStr(start);
+      setStartDate(startStr);
+      setEndDate(endStr);
+    }
+  };
+
+  const handleCustomDateChange = (startVal, endVal) => {
+    setDatePreset("CUSTOM");
+    setStartDate(startVal);
+    setEndDate(endVal);
+  };
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -471,9 +531,28 @@ export default function SurveyCharts() {
       (s) => String(s.surveyId) === String(selectedSurveyId)
     ) || filteredSurveys[0];
 
+  const filteredResponses = useMemo(() => {
+    if (!activeSurvey || !activeSurvey.responses) return [];
+    return activeSurvey.responses.filter((r) => {
+      if (!r.createdAt) return true;
+      const rDate = new Date(r.createdAt);
+      if (startDate) {
+        const [sYear, sMonth, sDay] = startDate.split("-").map(Number);
+        const sTime = new Date(sYear, sMonth - 1, sDay, 0, 0, 0, 0).getTime();
+        if (rDate.getTime() < sTime) return false;
+      }
+      if (endDate) {
+        const [eYear, eMonth, eDay] = endDate.split("-").map(Number);
+        const eTime = new Date(eYear, eMonth - 1, eDay, 23, 59, 59, 999).getTime();
+        if (rDate.getTime() > eTime) return false;
+      }
+      return true;
+    });
+  }, [activeSurvey, startDate, endDate]);
+
   const questionStats = useMemo(
-    () => (activeSurvey ? buildQuestionStats(activeSurvey) : []),
-    [activeSurvey]
+    () => (activeSurvey ? buildQuestionStats({ ...activeSurvey, responses: filteredResponses }) : []),
+    [activeSurvey, filteredResponses]
   );
 
   // --------- EXPORT HELPERS (CSV / Excel + PDF) ----------
@@ -488,12 +567,10 @@ export default function SurveyCharts() {
     rows.push(["Survey Analytics"]);
     rows.push(["Survey Name", activeSurvey.name || "Untitled Survey"]);
     rows.push(["Survey Code", activeSurvey.surveyCode || "-"]);
-    rows.push([
-      "Total Responses",
-      activeSurvey.responses?.length ??
-        activeSurvey.totalResponses ??
-        0,
-    ]);
+    if (startDate || endDate) {
+      rows.push(["Date Range", `${startDate || "Beginning"} to ${endDate || "Present"}`]);
+    }
+    rows.push(["Total Responses", filteredResponses.length]);
     rows.push([]); // empty line
 
     // Per-question data
@@ -705,19 +782,21 @@ export default function SurveyCharts() {
 
     const surveyName = activeSurvey.name || "Untitled Survey";
     const surveyCode = activeSurvey.surveyCode || "-";
-    const totalResp =
-      activeSurvey.responses?.length ??
-      activeSurvey.totalResponses ??
-      0;
+    const totalResp = filteredResponses.length;
 
     doc.setFontSize(14);
     doc.text("Survey Analytics", 14, 16);
     doc.setFontSize(11);
     doc.text(`Survey: ${surveyName}`, 14, 24);
     doc.text(`Code: ${surveyCode}`, 14, 30);
-    doc.text(`Total Responses: ${totalResp}`, 14, 36);
+    let yPos = 36;
+    if (startDate || endDate) {
+      doc.text(`Date Range: ${startDate || "Beginning"} to ${endDate || "Present"}`, 14, yPos);
+      yPos += 6;
+    }
+    doc.text(`Total Responses: ${totalResp}`, 14, yPos);
 
-    let startY = 44;
+    let startY = yPos + 8;
 
     questionStats.forEach((q, index) => {
       // Question title
@@ -969,9 +1048,155 @@ export default function SurveyCharts() {
 
           {activeSurvey && (
             <>
-              {/* Active survey header summary */}
-              {/* ... header + export buttons same as above handleExportCSV/Excel/PDF ... */}
-              {/* (keeping as-is from your last code, not repeating here again to save space) */}
+              {/* Date Wise Filter Card */}
+              <div
+                className="rounded-2xl border p-4 md:p-5 shadow-sm space-y-3"
+                style={{
+                  backgroundColor: themeColors.surface,
+                  borderColor: themeColors.border,
+                }}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div
+                    className="flex items-center gap-2 font-semibold text-xs md:text-sm"
+                    style={{ color: themeColors.text }}
+                  >
+                    <FaCalendarAlt className="text-blue-500 text-sm md:text-base" />
+                    <span>Date Wise Filter</span>
+                    {(startDate || endDate) && (
+                      <span
+                        className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+                        style={{
+                          backgroundColor: themeColors.primary + "20",
+                          color: themeColors.primary,
+                        }}
+                      >
+                        Active Filter
+                      </span>
+                    )}
+                  </div>
+
+                  {(startDate || endDate) && (
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPreset("ALL")}
+                      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border font-medium transition-all"
+                      style={{
+                        borderColor: themeColors.danger + "60",
+                        color: themeColors.danger,
+                        backgroundColor: themeColors.danger + "10",
+                      }}
+                    >
+                      <FaTimes className="text-[10px]" />
+                      Clear Filter
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  {[
+                    { key: "ALL", label: "All Time" },
+                    { key: "TODAY", label: "Today" },
+                    { key: "YESTERDAY", label: "Yesterday" },
+                    { key: "LAST_7", label: "Last 7 Days" },
+                    { key: "LAST_30", label: "Last 30 Days" },
+                    { key: "THIS_MONTH", label: "This Month" },
+                  ].map((preset) => {
+                    const isActive = datePreset === preset.key;
+                    return (
+                      <button
+                        key={preset.key}
+                        type="button"
+                        onClick={() => handleApplyPreset(preset.key)}
+                        className={`px-3 py-1.5 rounded-full border text-xs transition-all font-medium ${
+                          isActive
+                            ? "shadow-sm font-semibold"
+                            : "opacity-80 hover:opacity-100"
+                        }`}
+                        style={{
+                          backgroundColor: isActive
+                            ? themeColors.primary
+                            : themeColors.background,
+                          color: isActive ? "#ffffff" : themeColors.text,
+                          borderColor: isActive
+                            ? themeColors.primary
+                            : themeColors.border,
+                        }}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Date Range Inputs */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 items-end gap-3 pt-1">
+                  <div>
+                    <label
+                      className="block text-[11px] font-medium mb-1 opacity-80"
+                      style={{ color: themeColors.text }}
+                    >
+                      From Date
+                    </label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) =>
+                        handleCustomDateChange(e.target.value, endDate)
+                      }
+                      className="w-full px-3 py-1.5 rounded-lg border text-xs md:text-sm"
+                      style={{
+                        borderColor: themeColors.border,
+                        backgroundColor: themeColors.background,
+                        color: themeColors.text,
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      className="block text-[11px] font-medium mb-1 opacity-80"
+                      style={{ color: themeColors.text }}
+                    >
+                      To Date
+                    </label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) =>
+                        handleCustomDateChange(startDate, e.target.value)
+                      }
+                      className="w-full px-3 py-1.5 rounded-lg border text-xs md:text-sm"
+                      style={{
+                        borderColor: themeColors.border,
+                        backgroundColor: themeColors.background,
+                        color: themeColors.text,
+                      }}
+                    />
+                  </div>
+
+                  <div
+                    className="text-xs opacity-80 pb-1"
+                    style={{ color: themeColors.text }}
+                  >
+                    <span>Showing </span>
+                    <span
+                      className="font-bold text-sm"
+                      style={{ color: themeColors.primary }}
+                    >
+                      {filteredResponses.length}
+                    </span>
+                    <span> of </span>
+                    <span className="font-semibold">
+                      {activeSurvey.responses?.length ??
+                        activeSurvey.totalResponses ??
+                        0}
+                    </span>
+                    <span> responses</span>
+                  </div>
+                </div>
+              </div>
 
               {/* Header card */}
               <div
@@ -1023,9 +1248,7 @@ export default function SurveyCharts() {
                         className="text-xl md:text-2xl font-bold"
                         style={{ color: themeColors.primary }}
                       >
-                        {activeSurvey.responses?.length ??
-                          activeSurvey.totalResponses ??
-                          0}
+                        {filteredResponses.length}
                       </p>
                     </div>
                     {activeSurvey.status && (
