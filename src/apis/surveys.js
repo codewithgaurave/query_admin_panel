@@ -78,6 +78,18 @@ export const getSurveyWithQuestions = async (surveyIdOrCode) => {
 };
 
 /**
+ * GET /survey/:surveyIdOrCode/responses
+ * Admin: list all responses for a survey
+ */
+export const getSurveyResponses = async (surveyIdOrCode) => {
+  const { data } = await http.get(`/survey/${surveyIdOrCode}/responses`, {
+    headers: authHeaders(),
+  });
+  // backend: { survey, responses }
+  return data;
+};
+
+/**
  * POST /survey/:surveyIdOrCode/questions
  * Admin: add a question
  */

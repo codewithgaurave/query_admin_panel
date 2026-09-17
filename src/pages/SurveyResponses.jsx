@@ -21,6 +21,8 @@ import { useTheme } from "../context/ThemeContext";
 import {
   listSurveyResponseSummary,
   getUserSurveySummary,
+  getSurveyWithQuestions,
+  getSurveyResponses,
 } from "../apis/surveys";
 import * as XLSX from "xlsx"; // Excel export
 
@@ -216,63 +218,129 @@ export default function SurveyResponses() {
 
   // -------- Helper: collect all records + question order (common for CSV & Excel) --------
   const collectSurveyRecords = async (surveySummaryItem) => {
-    const users = surveySummaryItem.users || [];
-    const allRecords = []; // { user, resp, answersMap }
-    const questionOrder = [];
-    const questionSet = new Set();
+    const surveyIdOrCode =
+      surveySummaryItem.surveyId || surveySummaryItem.surveyCode;
+    let rawResponses = [];
+    let officialQuestions = [];
 
-    for (const user of users) {
-      try {
-        const res = await getUserSurveySummary(user.userCode);
-        const data = res || {};
+    // 1. Fetch survey official questions to guarantee exact question order & all questions included
+    try {
+      const qRes = await getSurveyWithQuestions(surveyIdOrCode);
+      if (qRes?.questions && Array.isArray(qRes.questions)) {
+        officialQuestions = qRes.questions.filter((q) => q.isActive !== false);
+      }
+    } catch (err) {
+      console.warn("Could not fetch survey questions directly:", err);
+    }
 
-        const surveyItem =
-          data.surveys?.find(
-            (sv) =>
-              String(sv.surveyId) === String(surveySummaryItem.surveyId) ||
-              sv.surveyCode === surveySummaryItem.surveyCode
-          ) || null;
+    // 2. Fetch all survey responses in one direct query
+    try {
+      const respRes = await getSurveyResponses(surveyIdOrCode);
+      if (respRes?.responses && Array.isArray(respRes.responses)) {
+        rawResponses = respRes.responses;
+      }
+    } catch (err) {
+      console.warn(
+        "Could not fetch survey responses directly, falling back:",
+        err
+      );
+    }
 
-        if (!surveyItem || !surveyItem.responses?.length) {
-          continue;
+    // Fallback: If direct responses call returned empty, try collecting via users list
+    if (!rawResponses.length && surveySummaryItem.users?.length) {
+      for (const user of surveySummaryItem.users) {
+        if (!user.userCode) continue;
+        try {
+          const res = await getUserSurveySummary(user.userCode);
+          const data = res || {};
+          const surveyItem =
+            data.surveys?.find(
+              (sv) =>
+                String(sv.surveyId) === String(surveySummaryItem.surveyId) ||
+                sv.surveyCode === surveySummaryItem.surveyCode
+            ) || null;
+
+          if (surveyItem?.responses?.length) {
+            surveyItem.responses.forEach((r) => {
+              rawResponses.push({
+                ...r,
+                userCode: user.userCode,
+                userName: user.userName,
+                userMobile: user.userMobile,
+              });
+            });
+          }
+        } catch (err) {
+          console.error("Fallback user summary fetch error", err);
         }
-
-        (surveyItem.responses || []).forEach((resp) => {
-          const answers = resp.answers || [];
-          const answersMap = {};
-
-          answers.forEach((a) => {
-            const qText = a.questionText || "";
-            if (!qText) return;
-            const ansText = buildAnswerText(a);
-
-            if (!questionSet.has(qText)) {
-              questionSet.add(qText);
-              questionOrder.push(qText);
-            }
-
-            answersMap[qText] = ansText;
-          });
-
-          allRecords.push({ user, resp, answersMap });
-        });
-      } catch (err) {
-        console.error("Error fetching user survey summary for export", err);
       }
     }
 
-    return { allRecords, questionOrder };
+    // 3. Build Question Headers List (Question list from official definitions + any dynamic ones in answers)
+    const questionHeaders = [];
+    const questionIdToText = new Map();
+    const seenQuestionTexts = new Set();
+
+    // First add all official questions in their defined order
+    officialQuestions.forEach((q) => {
+      const text = (q.questionText || "").trim();
+      if (text) {
+        const qId = String(q.id || q._id);
+        questionIdToText.set(qId, text);
+        if (!seenQuestionTexts.has(text)) {
+          seenQuestionTexts.add(text);
+          questionHeaders.push(text);
+        }
+      }
+    });
+
+    // Also scan all responses to ensure no extra/dynamic questions are missed
+    rawResponses.forEach((resp) => {
+      (resp.answers || []).forEach((a) => {
+        const qText = (a.questionText || "").trim();
+        const qId = a.question ? String(a.question) : null;
+        if (qId && qText && !questionIdToText.has(qId)) {
+          questionIdToText.set(qId, qText);
+        }
+        if (qText && !seenQuestionTexts.has(qText)) {
+          seenQuestionTexts.add(qText);
+          questionHeaders.push(qText);
+        }
+      });
+    });
+
+    // 4. Transform every response into allRecords
+    const allRecords = rawResponses.map((resp) => {
+      const answersMap = {}; // { questionText: answerString }
+
+      (resp.answers || []).forEach((a) => {
+        const qId = a.question ? String(a.question) : null;
+        const qText = (
+          a.questionText ||
+          (qId ? questionIdToText.get(qId) : "") ||
+          ""
+        ).trim();
+        if (!qText) return;
+
+        const ansText = buildAnswerText(a);
+        answersMap[qText] = ansText;
+      });
+
+      const user = {
+        userCode: resp.userCode || "",
+        userName: resp.userName || resp.userCode || "",
+        userMobile: resp.userMobile || "",
+      };
+
+      return { user, resp, answersMap };
+    });
+
+    return { allRecords, questionOrder: questionHeaders };
   };
 
   // ---------------- CSV EXPORT ----------------
   const handleExportSurveyCSV = async (surveySummaryItem) => {
     if (!surveySummaryItem) return;
-
-    const users = surveySummaryItem.users || [];
-    if (users.length === 0) {
-      toast.error("Is survey ke liye koi user data nahi mila.");
-      return;
-    }
 
     try {
       setExportingSurveyId(surveySummaryItem.surveyId);
@@ -384,12 +452,6 @@ export default function SurveyResponses() {
   // ---------------- EXCEL EXPORT ----------------
   const handleExportSurveyExcel = async (surveySummaryItem) => {
     if (!surveySummaryItem) return;
-
-    const users = surveySummaryItem.users || [];
-    if (users.length === 0) {
-      toast.error("Is survey ke liye koi user data nahi mila.");
-      return;
-    }
 
     try {
       setExportingSurveyId(surveySummaryItem.surveyId);
