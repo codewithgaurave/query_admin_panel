@@ -109,19 +109,71 @@ const csvEscape = (val) =>
     .replace(/"/g, '""')
     .trim()}"`;
 
-// Answer text like UI
+// Answer text like UI - comprehensive support for all answer types
 const buildAnswerText = (ans) => {
-  if (!ans) return "-";
-  const parts = [];
-  if (ans.selectedOption) parts.push(ans.selectedOption);
-  if (Array.isArray(ans.selectedOptions) && ans.selectedOptions.length > 0) {
-    const opts = ans.selectedOptions.filter((o) => o !== ans.selectedOption);
-    if (opts.length > 0) parts.push(opts.join(", "));
+  if (ans === undefined || ans === null) return "";
+  if (typeof ans === "string" || typeof ans === "number" || typeof ans === "boolean") {
+    return String(ans).trim();
   }
-  if (ans.answerText) parts.push(ans.answerText);
-  if (typeof ans.rating === "number") parts.push(`Rating: ${ans.rating}`);
-  if (ans.otherText) parts.push(`(Other: ${ans.otherText})`);
-  return parts.length > 0 ? parts.join(" ") : "-";
+
+  const collected = [];
+
+  // Options / selection array
+  let opts = [];
+  if (Array.isArray(ans.selectedOptions) && ans.selectedOptions.length > 0) {
+    opts = ans.selectedOptions
+      .map((o) => {
+        if (o === null || o === undefined) return "";
+        if (typeof o === "object") return o.label || o.value || o.name || JSON.stringify(o);
+        return String(o).trim();
+      })
+      .filter(Boolean);
+  } else if (ans.selectedOptions && typeof ans.selectedOptions === "string" && ans.selectedOptions.trim()) {
+    opts = [ans.selectedOptions.trim()];
+  }
+
+  // Single selectedOption
+  if (ans.selectedOption !== undefined && ans.selectedOption !== null) {
+    const sel = String(ans.selectedOption).trim();
+    if (sel && !opts.includes(sel)) {
+      opts.unshift(sel);
+    }
+  }
+
+  if (opts.length > 0) {
+    collected.push(opts.join(", "));
+  }
+
+  // Answer text
+  const rawText = ans.answerText ?? ans.response ?? ans.value ?? ans.text;
+  if (rawText !== undefined && rawText !== null) {
+    const strText = String(rawText).trim();
+    if (strText && !collected.includes(strText)) {
+      collected.push(strText);
+    }
+  }
+
+  // Rating
+  const rawRating = ans.rating;
+  if (rawRating !== undefined && rawRating !== null && String(rawRating).trim() !== "") {
+    const rNum = Number(rawRating);
+    if (!Number.isNaN(rNum)) {
+      const ratingStr = `Rating: ${rNum}`;
+      if (!collected.some((c) => c.includes(String(rNum)))) {
+        collected.push(ratingStr);
+      }
+    }
+  }
+
+  // Other text
+  if (ans.otherText && String(ans.otherText).trim()) {
+    const oText = String(ans.otherText).trim();
+    if (!collected.includes(oText)) {
+      collected.push(`(Other: ${oText})`);
+    }
+  }
+
+  return collected.length > 0 ? collected.join(" | ") : "";
 };
 
 export default function SurveyResponses() {
@@ -227,7 +279,7 @@ export default function SurveyResponses() {
     try {
       const qRes = await getSurveyWithQuestions(surveyIdOrCode);
       if (qRes?.questions && Array.isArray(qRes.questions)) {
-        officialQuestions = qRes.questions.filter((q) => q.isActive !== false);
+        officialQuestions = qRes.questions;
       }
     } catch (err) {
       console.warn("Could not fetch survey questions directly:", err);
@@ -276,54 +328,87 @@ export default function SurveyResponses() {
       }
     }
 
-    // 3. Build Question Headers List (Question list from official definitions + any dynamic ones in answers)
+    // 3. Build Question Headers List & Canonical mapping
     const questionHeaders = [];
-    const questionIdToText = new Map();
-    const seenQuestionTexts = new Set();
+    const questionIdToCanonical = new Map();
+    const seenHeaders = new Set();
 
     // First add all official questions in their defined order
     officialQuestions.forEach((q) => {
       const text = (q.questionText || "").trim();
+      const qId = String(q.id || q._id || "").trim();
       if (text) {
-        const qId = String(q.id || q._id);
-        questionIdToText.set(qId, text);
-        if (!seenQuestionTexts.has(text)) {
-          seenQuestionTexts.add(text);
+        if (qId) {
+          questionIdToCanonical.set(qId, text);
+        }
+        if (!seenHeaders.has(text)) {
+          seenHeaders.add(text);
           questionHeaders.push(text);
         }
       }
     });
 
-    // Also scan all responses to ensure no extra/dynamic questions are missed
+    // Also scan all responses to ensure any extra/dynamic questions are included
     rawResponses.forEach((resp) => {
       (resp.answers || []).forEach((a) => {
+        const qId = a.question
+          ? String(a.question._id || a.question.id || a.question).trim()
+          : a.questionId
+          ? String(a.questionId).trim()
+          : "";
         const qText = (a.questionText || "").trim();
-        const qId = a.question ? String(a.question) : null;
-        if (qId && qText && !questionIdToText.has(qId)) {
-          questionIdToText.set(qId, qText);
+
+        if (qId && questionIdToCanonical.has(qId)) {
+          return;
         }
-        if (qText && !seenQuestionTexts.has(qText)) {
-          seenQuestionTexts.add(qText);
-          questionHeaders.push(qText);
+
+        const targetText = qText || (qId ? `Question ${qId}` : "");
+        if (targetText && !seenHeaders.has(targetText)) {
+          seenHeaders.add(targetText);
+          questionHeaders.push(targetText);
+          if (qId) {
+            questionIdToCanonical.set(qId, targetText);
+          }
         }
       });
     });
 
-    // 4. Transform every response into allRecords
+    // 4. Transform every response into allRecords with canonical header mappings
     const allRecords = rawResponses.map((resp) => {
-      const answersMap = {}; // { questionText: answerString }
+      const answersMap = {}; // { canonicalQuestionText: answerString }
 
       (resp.answers || []).forEach((a) => {
-        const qId = a.question ? String(a.question) : null;
-        const qText = (
-          a.questionText ||
-          (qId ? questionIdToText.get(qId) : "") ||
-          ""
-        ).trim();
-        if (!qText) return;
+        const qId = a.question
+          ? String(a.question._id || a.question.id || a.question).trim()
+          : a.questionId
+          ? String(a.questionId).trim()
+          : "";
+        const rawQText = (a.questionText || "").trim();
+
+        let canonicalHeader = "";
+        if (qId && questionIdToCanonical.has(qId)) {
+          canonicalHeader = questionIdToCanonical.get(qId);
+        } else if (rawQText && seenHeaders.has(rawQText)) {
+          canonicalHeader = rawQText;
+        } else if (rawQText) {
+          const found = questionHeaders.find(
+            (h) => h.toLowerCase() === rawQText.toLowerCase()
+          );
+          canonicalHeader = found || rawQText;
+        } else if (qId) {
+          canonicalHeader = `Question ${qId}`;
+        }
+
+        if (!canonicalHeader) return;
 
         const ansText = buildAnswerText(a);
-        answersMap[qText] = ansText;
+        if (ansText) {
+          if (answersMap[canonicalHeader]) {
+            answersMap[canonicalHeader] = `${answersMap[canonicalHeader]} ; ${ansText}`;
+          } else {
+            answersMap[canonicalHeader] = ansText;
+          }
+        }
       });
 
       const user = {
