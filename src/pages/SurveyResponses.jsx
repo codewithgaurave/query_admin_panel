@@ -328,27 +328,46 @@ export default function SurveyResponses() {
       }
     }
 
-    // 3. Build Question Headers List & Canonical mapping
-    const questionHeaders = [];
-    const questionIdToCanonical = new Map();
-    const seenHeaders = new Set();
+    // 3. Build Question Columns List with Unique Identifiers and Clear Labels
+    const questionColumns = []; // Array of { key: string, label: string, qId: string, qText: string }
+    const qIdToColKey = new Map();
+    const rawTextToColKey = new Map();
 
-    // First add all official questions in their defined order
-    officialQuestions.forEach((q) => {
-      const text = (q.questionText || "").trim();
+    const usedLabels = new Set();
+    const makeUniqueLabel = (baseLabel) => {
+      let candidate = baseLabel;
+      let counter = 1;
+      while (usedLabels.has(candidate)) {
+        counter++;
+        candidate = `${baseLabel} (${counter})`;
+      }
+      usedLabels.add(candidate);
+      return candidate;
+    };
+
+    // Add all official questions (guarantees all 74 questions get individual distinct columns!)
+    officialQuestions.forEach((q, idx) => {
+      const qText = (q.questionText || "").trim() || `Question ${idx + 1}`;
       const qId = String(q.id || q._id || "").trim();
-      if (text) {
-        if (qId) {
-          questionIdToCanonical.set(qId, text);
-        }
-        if (!seenHeaders.has(text)) {
-          seenHeaders.add(text);
-          questionHeaders.push(text);
-        }
+      const colKey = qId ? `qid_${qId}` : `qidx_${idx}`;
+
+      let baseLabel = qText;
+      if (q.parentOptionValue && String(q.parentOptionValue).trim()) {
+        baseLabel = `${qText} (${String(q.parentOptionValue).trim()})`;
+      }
+
+      const label = makeUniqueLabel(baseLabel);
+
+      questionColumns.push({ key: colKey, label, qId, qText });
+      if (qId) {
+        qIdToColKey.set(qId, colKey);
+      }
+      if (!rawTextToColKey.has(qText.toLowerCase())) {
+        rawTextToColKey.set(qText.toLowerCase(), colKey);
       }
     });
 
-    // Also scan all responses to ensure any extra/dynamic questions are included
+    // Also scan all responses to ensure any extra/dynamic questions not in official list are included
     rawResponses.forEach((resp) => {
       (resp.answers || []).forEach((a) => {
         const qId = a.question
@@ -358,24 +377,27 @@ export default function SurveyResponses() {
           : "";
         const qText = (a.questionText || "").trim();
 
-        if (qId && questionIdToCanonical.has(qId)) {
-          return;
-        }
+        if (qId && qIdToColKey.has(qId)) return;
 
-        const targetText = qText || (qId ? `Question ${qId}` : "");
-        if (targetText && !seenHeaders.has(targetText)) {
-          seenHeaders.add(targetText);
-          questionHeaders.push(targetText);
-          if (qId) {
-            questionIdToCanonical.set(qId, targetText);
-          }
+        const colKey = qId ? `qid_${qId}` : `dynamic_${qText}`;
+        if (qIdToColKey.has(colKey)) return;
+
+        const baseLabel = qText || (qId ? `Question ${qId}` : "Additional Question");
+        const label = makeUniqueLabel(baseLabel);
+
+        questionColumns.push({ key: colKey, label, qId, qText });
+        if (qId) {
+          qIdToColKey.set(qId, colKey);
+        }
+        if (qText && !rawTextToColKey.has(qText.toLowerCase())) {
+          rawTextToColKey.set(qText.toLowerCase(), colKey);
         }
       });
     });
 
-    // 4. Transform every response into allRecords with canonical header mappings
+    // 4. Transform every response into allRecords using question column keys
     const allRecords = rawResponses.map((resp) => {
-      const answersMap = {}; // { canonicalQuestionText: answerString }
+      const answersMap = {}; // { colKey: answerString }
 
       (resp.answers || []).forEach((a) => {
         const qId = a.question
@@ -385,28 +407,21 @@ export default function SurveyResponses() {
           : "";
         const rawQText = (a.questionText || "").trim();
 
-        let canonicalHeader = "";
-        if (qId && questionIdToCanonical.has(qId)) {
-          canonicalHeader = questionIdToCanonical.get(qId);
-        } else if (rawQText && seenHeaders.has(rawQText)) {
-          canonicalHeader = rawQText;
-        } else if (rawQText) {
-          const found = questionHeaders.find(
-            (h) => h.toLowerCase() === rawQText.toLowerCase()
-          );
-          canonicalHeader = found || rawQText;
-        } else if (qId) {
-          canonicalHeader = `Question ${qId}`;
+        let colKey = "";
+        if (qId && qIdToColKey.has(qId)) {
+          colKey = qIdToColKey.get(qId);
+        } else if (rawQText && rawTextToColKey.has(rawQText.toLowerCase())) {
+          colKey = rawTextToColKey.get(rawQText.toLowerCase());
         }
 
-        if (!canonicalHeader) return;
+        if (!colKey) return;
 
         const ansText = buildAnswerText(a);
         if (ansText) {
-          if (answersMap[canonicalHeader]) {
-            answersMap[canonicalHeader] = `${answersMap[canonicalHeader]} ; ${ansText}`;
+          if (answersMap[colKey]) {
+            answersMap[colKey] = `${answersMap[colKey]} ; ${ansText}`;
           } else {
-            answersMap[canonicalHeader] = ansText;
+            answersMap[colKey] = ansText;
           }
         }
       });
@@ -420,7 +435,7 @@ export default function SurveyResponses() {
       return { user, resp, answersMap };
     });
 
-    return { allRecords, questionOrder: questionHeaders };
+    return { allRecords, questionColumns };
   };
 
   // ---------------- CSV EXPORT ----------------
@@ -431,7 +446,7 @@ export default function SurveyResponses() {
       setExportingSurveyId(surveySummaryItem.surveyId);
       toast.info("CSV export prepare ho raha hai...");
 
-      const { allRecords, questionOrder } =
+      const { allRecords, questionColumns } =
         await collectSurveyRecords(surveySummaryItem);
 
       if (allRecords.length === 0) {
@@ -451,8 +466,6 @@ export default function SurveyResponses() {
       rows.push(["Survey Name", surveySummaryItem.name || "-"]);
       rows.push([]);
 
-      const questionHeaders = questionOrder;
-
       // Header row
       rows.push([
         "Sample ID",
@@ -468,7 +481,7 @@ export default function SurveyResponses() {
         "Approved By Name",
         "Approved By User Code",
         "Is Completed",
-        ...questionHeaders,
+        ...questionColumns.map((c) => c.label),
       ]);
 
       // Data rows
@@ -496,7 +509,7 @@ export default function SurveyResponses() {
           resp.approvedByName || "",
           resp.approvedByUserCode || "",
           resp.isCompleted === false ? "NO" : "YES",
-          ...questionHeaders.map((qh) => answersMap[qh] ?? ""),
+          ...questionColumns.map((c) => answersMap[c.key] ?? ""),
         ];
 
         rows.push(row);
@@ -542,7 +555,7 @@ export default function SurveyResponses() {
       setExportingSurveyId(surveySummaryItem.surveyId);
       toast.info("Excel export prepare ho raha hai...");
 
-      const { allRecords, questionOrder } =
+      const { allRecords, questionColumns } =
         await collectSurveyRecords(surveySummaryItem);
 
       if (allRecords.length === 0) {
@@ -581,8 +594,8 @@ export default function SurveyResponses() {
           "Is Completed": resp.isCompleted === false ? "NO" : "YES",
         };
 
-        questionOrder.forEach((qText) => {
-          baseRow[qText] = answersMap[qText] ?? "";
+        questionColumns.forEach((c) => {
+          baseRow[c.label] = answersMap[c.key] ?? "";
         });
 
         return baseRow;
