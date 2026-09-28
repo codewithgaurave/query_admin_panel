@@ -5,8 +5,11 @@ import http from "./http";
  * GET /survey/public/responses/all
  * Sabhi surveys + unke saare responses + user + approval info
  */
-export const listAllPublicSurveyResponses = async () => {
-  const { data } = await http.get("/survey/public/responses/all");
+export const listAllPublicSurveyResponses = async (params = {}) => {
+  const queryParams = typeof params === "string" ? { date: params } : params;
+  const { data } = await http.get("/survey/public/responses/all", {
+    params: queryParams,
+  });
   return data; // { surveys: [...] }
 };
 
