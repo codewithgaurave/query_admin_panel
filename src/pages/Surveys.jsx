@@ -19,6 +19,7 @@ import {
   FaTrash,
   FaUser,
   FaCopy,
+  FaUserShield,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -29,6 +30,7 @@ import {
   duplicateSurvey,
 } from "../apis/surveys";
 import { listUsers } from "../apis/users"; // ✅ NEW – users list for assignment
+import { listSubAdmins } from "../apis/subAdmins";
 
 const SURVEY_STATUSES = ["DRAFT", "ACTIVE", "CLOSED"];
 
@@ -79,7 +81,17 @@ export default function Surveys() {
   // filters
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
-  const  [categoryFilter, setCategoryFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [subAdminFilter, setSubAdminFilter] = useState("All");
+  const [subAdmins, setSubAdmins] = useState([]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const subId = params.get("subAdminId");
+    if (subId) {
+      setSubAdminFilter(subId);
+    }
+  }, [location.search]);
 
   // create / edit survey
   const [createOpen, setCreateOpen] = useState(false);
@@ -129,6 +141,16 @@ export default function Surveys() {
     }
   };
 
+  // sub-admins
+  const loadSubAdmins = async () => {
+    try {
+      const res = await listSubAdmins();
+      setSubAdmins(res.subAdmins || []);
+    } catch (err) {
+      console.error("Failed to load sub-admins:", err);
+    }
+  };
+
   // ✅ users (sirf SURVEY_USER & QUALITY_ENGINEER)
   const loadUsers = async () => {
     try {
@@ -159,6 +181,7 @@ export default function Surveys() {
   useEffect(() => {
     loadSurveys();
     loadUsers();
+    loadSubAdmins();
   }, []);
 
   // derived data
@@ -189,6 +212,11 @@ export default function Surveys() {
           ? true
           : String(s.category) === String(categoryFilter);
 
+      const subAdminOk =
+        subAdminFilter === "All"
+          ? true
+          : String(s.createdByAdmin?._id || s.createdByAdmin) === String(subAdminFilter);
+
       const searchOk =
         !q ||
         [
@@ -198,13 +226,15 @@ export default function Surveys() {
           s.projectName,
           s.targetAudience,
           s.description,
+          s.createdByAdmin?.name,
+          s.createdByAdmin?.adminId,
         ]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(q));
 
-      return statusOk && catOk && searchOk;
+      return statusOk && catOk && subAdminOk && searchOk;
     });
-  }, [surveys, search, activeTab, statusFilter, categoryFilter]);
+  }, [surveys, search, activeTab, statusFilter, categoryFilter, subAdminFilter]);
 
   const stats = useMemo(() => {
     const total = surveys.length;
@@ -1227,10 +1257,40 @@ export default function Surveys() {
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
               >
-                <option value="All">All</option>
+                <option value="All">All Categories</option>
                 {categories.map((c) => (
                   <option key={c} value={c}>
                     {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Sub Admin filter */}
+          <div className="min-w-[170px]">
+            <label
+              className="text-xs mb-1 block opacity-70"
+              style={{ color: themeColors.text }}
+            >
+              Sub Admin
+            </label>
+            <div className="flex items-center gap-2">
+              <FaUserShield className="opacity-70 text-indigo-500" />
+              <select
+                className="w-full p-2 rounded-lg border text-sm"
+                style={{
+                  borderColor: themeColors.border,
+                  backgroundColor: themeColors.background,
+                  color: themeColors.text,
+                }}
+                value={subAdminFilter}
+                onChange={(e) => setSubAdminFilter(e.target.value)}
+              >
+                <option value="All">All Sub Admins</option>
+                {subAdmins.map((sa) => (
+                  <option key={sa._id} value={sa._id}>
+                    {sa.name} ({sa.adminId})
                   </option>
                 ))}
               </select>
@@ -1300,6 +1360,7 @@ export default function Surveys() {
                 {[
                   "Name",
                   "Survey Code",
+                  "Sub Admin",
                   "Status",
                   "Category",
                   "Project",
@@ -1357,6 +1418,19 @@ export default function Surveys() {
                     style={{ color: themeColors.text }}
                   >
                     {s.surveyCode}
+                  </td>
+                  <td
+                    className="px-4 py-3 text-xs"
+                    style={{ color: themeColors.text }}
+                  >
+                    {s.createdByAdmin ? (
+                      <span className="inline-flex items-center gap-1 font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/80 px-2 py-0.5 rounded-md text-[11px]">
+                        <FaUserShield className="text-[10px]" />
+                        <span>{s.createdByAdmin.name || s.createdByAdmin.adminId}</span>
+                      </span>
+                    ) : (
+                      <span className="opacity-40 text-xs">-</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-xs">
                     <span

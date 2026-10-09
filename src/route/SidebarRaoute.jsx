@@ -13,11 +13,13 @@ import {
   FaThumbtack,       // ⭐ Pinned questions icon
   FaUserCog,         // Admin Profile icon
   FaStopCircle,      // Closed surveys icon
+  FaUserShield,      // ⭐ Sub Admin icon
 } from "react-icons/fa";
 
 // Existing pages
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const Users = lazy(() => import("../pages/Users"));
+const SubAdmins = lazy(() => import("../pages/SubAdmins")); // ⭐ Sub Admins page
 
 // New survey pages
 const Surveys = lazy(() => import("../pages/Surveys"));
@@ -42,6 +44,14 @@ const routes = [
     component: Dashboard,
     name: "Dashboard",
     icon: FaTachometerAlt,
+  },
+
+  // ⭐ NEW: Sub Admins management
+  {
+    path: "/sub-admins",
+    component: SubAdmins,
+    name: "Sub Admins",
+    icon: FaUserShield,
   },
 
   // ⭐ NEW: Pinned Questions Dashboard – sidebar me Dashboard ke just niche

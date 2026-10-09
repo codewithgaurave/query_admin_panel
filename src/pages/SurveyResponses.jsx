@@ -16,6 +16,7 @@ import {
   FaCopy,
   FaShareAlt,
   FaExternalLinkAlt,
+  FaUserShield,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -24,6 +25,7 @@ import {
   getSurveyWithQuestions,
   getSurveyResponses,
 } from "../apis/surveys";
+import { listSubAdmins } from "../apis/subAdmins";
 import * as XLSX from "xlsx"; // Excel export
 
 const fmtDateTime = (d) => {
@@ -184,6 +186,8 @@ export default function SurveyResponses() {
   const [summary, setSummary] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [subAdminFilter, setSubAdminFilter] = useState("All");
+  const [subAdmins, setSubAdmins] = useState([]);
 
   const [selectedSurvey, setSelectedSurvey] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -214,8 +218,18 @@ export default function SurveyResponses() {
     }
   };
 
+  const loadSubAdmins = async () => {
+    try {
+      const res = await listSubAdmins();
+      setSubAdmins(res.subAdmins || []);
+    } catch (err) {
+      console.error("Failed to load sub-admins:", err);
+    }
+  };
+
   useEffect(() => {
     loadSummary();
+    loadSubAdmins();
   }, []);
 
   const filteredSummary = useMemo(() => {
@@ -227,15 +241,27 @@ export default function SurveyResponses() {
           ? true
           : String(s.status) === String(statusFilter);
 
+      const subAdminOk =
+        subAdminFilter === "All"
+          ? true
+          : String(s.createdByAdmin?._id || s.createdByAdmin) === String(subAdminFilter);
+
       const searchOk =
         !q ||
-        [s.name, s.surveyCode, s.category, s.projectName]
+        [
+          s.name,
+          s.surveyCode,
+          s.category,
+          s.projectName,
+          s.createdByAdmin?.name,
+          s.createdByAdmin?.adminId,
+        ]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(q));
 
-      return statusOk && searchOk;
+      return statusOk && subAdminOk && searchOk;
     });
-  }, [summary, search, statusFilter]);
+  }, [summary, search, statusFilter, subAdminFilter]);
 
   const openUserDetail = async (survey, user) => {
     setSelectedSurvey(survey);
@@ -1186,10 +1212,36 @@ export default function SurveyResponses() {
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
-              <option value="All">All</option>
+              <option value="All">All Statuses</option>
               <option value="DRAFT">DRAFT</option>
               <option value="ACTIVE">ACTIVE</option>
               <option value="CLOSED">CLOSED</option>
+            </select>
+          </div>
+
+          <div className="min-w-[170px]">
+            <label
+              className="text-xs mb-1 block opacity-70"
+              style={{ color: themeColors.text }}
+            >
+              Sub Admin
+            </label>
+            <select
+              className="w-full p-2 rounded-lg border text-sm"
+              style={{
+                borderColor: themeColors.border,
+                backgroundColor: themeColors.background,
+                color: themeColors.text,
+              }}
+              value={subAdminFilter}
+              onChange={(e) => setSubAdminFilter(e.target.value)}
+            >
+              <option value="All">All Sub Admins</option>
+              {subAdmins.map((sa) => (
+                <option key={sa._id} value={sa._id}>
+                  {sa.name} ({sa.adminId})
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -1209,6 +1261,7 @@ export default function SurveyResponses() {
                 {[
                   "Survey",
                   "Code",
+                  "Sub Admin",
                   "Status",
                   "Category",
                   "Project",
@@ -1247,6 +1300,20 @@ export default function SurveyResponses() {
                     style={{ color: themeColors.text }}
                   >
                     {s.surveyCode}
+                  </td>
+
+                  <td
+                    className="px-4 py-3 text-xs"
+                    style={{ color: themeColors.text }}
+                  >
+                    {s.createdByAdmin ? (
+                      <span className="inline-flex items-center gap-1 font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/80 px-2 py-0.5 rounded-md text-[11px]">
+                        <FaUserShield className="text-[10px]" />
+                        <span>{s.createdByAdmin.name || s.createdByAdmin.adminId}</span>
+                      </span>
+                    ) : (
+                      <span className="opacity-40 text-xs">-</span>
+                    )}
                   </td>
 
                   <td className="px-4 py-3 text-xs">

@@ -56,9 +56,10 @@ export const duplicateSurvey = async (surveyIdOrCode) => {
  * Admin: list all surveys
  * backend: survey me ab assignedUsers bhi aayega (populate)
  */
-export const listSurveys = async () => {
+export const listSurveys = async (params = {}) => {
   const { data } = await http.get("/survey/list", {
     headers: authHeaders(),
+    params,
   });
   // backend: { surveys }
   return data;
@@ -153,9 +154,10 @@ export const listPublicSurveys = async (params = {}) => {
  * GET /survey/responses/summary
  * Admin: sabhi surveys + kitne responses + kis user ne diye
  */
-export const listSurveyResponseSummary = async () => {
+export const listSurveyResponseSummary = async (params = {}) => {
   const { data } = await http.get("/survey/responses/summary", {
     headers: authHeaders(),
+    params,
   });
   // backend: { surveys: [{ surveyId, surveyCode, name, totalResponses, users[], ... }] }
   return data;
