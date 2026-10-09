@@ -412,8 +412,10 @@ export default function SurveyCharts() {
   const { themeColors } = useTheme();
 
   const [loading, setLoading] = useState(true);
+  const [chartsLoading, setChartsLoading] = useState(false);
   const [error, setError] = useState("");
   const [surveys, setSurveys] = useState([]); // from listAllPublicSurveyResponses
+  const [activeSurveyResponses, setActiveSurveyResponses] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ACTIVE"); // Default to ACTIVE surveys only
   const [selectedSurveyId, setSelectedSurveyId] = useState("");
@@ -480,7 +482,7 @@ export default function SurveyCharts() {
     try {
       setLoading(true);
       setError("");
-      const res = await listAllPublicSurveyResponses();
+      const res = await listAllPublicSurveyResponses({ onlySurveys: true });
       const list = res.surveys || [];
       setSurveys(list);
       if (list.length && !selectedSurveyId) {
@@ -495,7 +497,7 @@ export default function SurveyCharts() {
       const msg =
         err?.response?.data?.message ||
         err?.message ||
-        "Failed to load survey responses.";
+        "Failed to load survey list.";
       setError(msg);
       toast.error(msg);
     } finally {
@@ -531,24 +533,44 @@ export default function SurveyCharts() {
       (s) => String(s.surveyId) === String(selectedSurveyId)
     ) || filteredSurveys[0];
 
-  const filteredResponses = useMemo(() => {
-    if (!activeSurvey || !activeSurvey.responses) return [];
-    return activeSurvey.responses.filter((r) => {
-      if (!r.createdAt) return true;
-      const rDate = new Date(r.createdAt);
-      if (startDate) {
-        const [sYear, sMonth, sDay] = startDate.split("-").map(Number);
-        const sTime = new Date(sYear, sMonth - 1, sDay, 0, 0, 0, 0).getTime();
-        if (rDate.getTime() < sTime) return false;
+  // Fetch responses on-demand for activeSurvey
+  useEffect(() => {
+    const targetId = activeSurvey?.surveyId || selectedSurveyId;
+    if (!targetId) {
+      setActiveSurveyResponses([]);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchSurveyData = async () => {
+      try {
+        setChartsLoading(true);
+        const res = await listAllPublicSurveyResponses({
+          surveyId: targetId,
+          startDate: startDate || undefined,
+          endDate: endDate || undefined,
+        });
+        if (!isMounted) return;
+        const matched = (res.surveys || []).find(
+          (s) => String(s.surveyId) === String(targetId)
+        ) || res.surveys?.[0];
+        setActiveSurveyResponses(matched?.responses || []);
+      } catch (err) {
+        if (!isMounted) return;
+        console.error("Failed to load survey analytics", err);
+        toast.error("Failed to load survey analytics");
+      } finally {
+        if (isMounted) setChartsLoading(false);
       }
-      if (endDate) {
-        const [eYear, eMonth, eDay] = endDate.split("-").map(Number);
-        const eTime = new Date(eYear, eMonth - 1, eDay, 23, 59, 59, 999).getTime();
-        if (rDate.getTime() > eTime) return false;
-      }
-      return true;
-    });
-  }, [activeSurvey, startDate, endDate]);
+    };
+
+    fetchSurveyData();
+    return () => {
+      isMounted = false;
+    };
+  }, [activeSurvey?.surveyId, selectedSurveyId, startDate, endDate]);
+
+  const filteredResponses = activeSurveyResponses;
 
   const questionStats = useMemo(
     () => (activeSurvey ? buildQuestionStats({ ...activeSurvey, responses: filteredResponses }) : []),
@@ -1335,33 +1357,57 @@ export default function SurveyCharts() {
               </div>
 
               {/* Question charts */}
-              {questionStats.length === 0 && (
-                <p
-                  className="text-sm md:text-base opacity-75"
-                  style={{ color: themeColors.text }}
+              {chartsLoading ? (
+                <div
+                  className="rounded-2xl border p-12 text-center shadow-sm"
+                  style={{
+                    backgroundColor: themeColors.surface,
+                    borderColor: themeColors.border,
+                  }}
                 >
-                  Is survey ke questions ka chart banane ke liye koi structured
-                  responses nahi mile (shayad sab open-ended hon).
-                </p>
+                  <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-500 mx-auto" />
+                  <p
+                    className="mt-3 text-sm font-medium"
+                    style={{ color: themeColors.text }}
+                  >
+                    Loading charts for {activeSurvey.name || "selected survey"}...
+                  </p>
+                </div>
+              ) : questionStats.length === 0 ? (
+                <div
+                  className="rounded-2xl border p-8 text-center shadow-sm"
+                  style={{
+                    backgroundColor: themeColors.surface,
+                    borderColor: themeColors.border,
+                  }}
+                >
+                  <p
+                    className="text-sm md:text-base opacity-75"
+                    style={{ color: themeColors.text }}
+                  >
+                    Is survey ke questions ka chart banane ke liye koi structured
+                    responses nahi mile (shayad sab open-ended hon ya koi response na ho).
+                  </p>
+                </div>
+              ) : (
+                questionStats.map((q, idx) => (
+                  <QuestionChart
+                    key={q.questionId || q.questionText}
+                    qStat={q}
+                    themeColors={themeColors}
+                    index={idx}
+                    onExportQuestionCSV={() =>
+                      handleExportQuestionCSV(q, idx)
+                    }
+                    onExportQuestionExcel={() =>
+                      handleExportQuestionExcel(q, idx)
+                    }
+                    onPinToDashboard={() =>
+                      handlePinQuestionToDashboard(q)
+                    }
+                  />
+                ))
               )}
-
-              {questionStats.map((q, idx) => (
-                <QuestionChart
-                  key={q.questionId || q.questionText}
-                  qStat={q}
-                  themeColors={themeColors}
-                  index={idx}
-                  onExportQuestionCSV={() =>
-                    handleExportQuestionCSV(q, idx)
-                  }
-                  onExportQuestionExcel={() =>
-                    handleExportQuestionExcel(q, idx)
-                  }
-                  onPinToDashboard={() =>
-                    handlePinQuestionToDashboard(q)
-                  }
-                />
-              ))}
             </>
           )}
         </div>
