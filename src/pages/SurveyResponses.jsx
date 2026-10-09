@@ -17,6 +17,7 @@ import {
   FaShareAlt,
   FaExternalLinkAlt,
   FaUserShield,
+  FaUserCheck,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -669,6 +670,417 @@ export default function SurveyResponses() {
         err?.message ||
         "Failed to export survey data (Excel).";
       toast.error(msg);
+    } finally {
+      setExportingSurveyId(null);
+    }
+  };
+
+  // ---------------- USER-WISE SURVEY & QC REPORT EXPORT ----------------
+  const handleExportUserWiseReport = async (surveySummaryItem) => {
+    if (!surveySummaryItem) return;
+
+    try {
+      setExportingSurveyId(surveySummaryItem.surveyId);
+      toast.info("User-Wise Survey Report prepare ho raha hai...");
+
+      const respRes = await getSurveyResponses(surveySummaryItem.surveyId);
+      const rawResponses = respRes.responses || [];
+
+      if (rawResponses.length === 0) {
+        toast.error("Is survey ke liye export karne layak koi response nahi mila.");
+        setExportingSurveyId(null);
+        return;
+      }
+
+      // 1. Group responses by surveyor/user
+      const userMap = new Map();
+      let overallQcCompletedCount = 0;
+
+      rawResponses.forEach((r) => {
+        const uKey = String(r.userCode || r.userName || "UNKNOWN").trim();
+        if (!userMap.has(uKey)) {
+          userMap.set(uKey, {
+            userCode: r.userCode || "-",
+            userName: r.userName || r.userCode || "Unknown Surveyor",
+            userMobile: r.userMobile || "-",
+            userRole: r.userRole || "SURVEY_USER",
+            totalCompleted: 0,
+            validCount: 0,
+            invalidCount: 0,
+            pendingCount: 0,
+            // Invalid reasons
+            notAskingAllQuestions: 0,
+            notDoingProperly: 0,
+            takingFromFriends: 0,
+            fakeOrEmptyAudio: 0,
+            lastResponseAt: r.createdAt,
+          });
+        }
+
+        const userStat = userMap.get(uKey);
+        userStat.totalCompleted += 1;
+
+        if (!userStat.lastResponseAt || new Date(r.createdAt) > new Date(userStat.lastResponseAt)) {
+          userStat.lastResponseAt = r.createdAt;
+        }
+
+        const status = r.approvalStatus || (r.isApproved ? "CORRECTLY_DONE" : "PENDING");
+
+        if (status === "CORRECTLY_DONE" || r.isApproved === true) {
+          userStat.validCount += 1;
+          overallQcCompletedCount += 1;
+        } else if (status === "PENDING") {
+          userStat.pendingCount += 1;
+        } else {
+          // Any rejection status
+          userStat.invalidCount += 1;
+          overallQcCompletedCount += 1;
+
+          if (status === "NOT_ASKING_ALL_QUESTIONS") userStat.notAskingAllQuestions += 1;
+          else if (status === "NOT_DOING_IT_PROPERLY") userStat.notDoingProperly += 1;
+          else if (status === "TAKING_FROM_FRIENDS_OR_TEAMMATE") userStat.takingFromFriends += 1;
+          else if (status === "FAKE_OR_EMPTY_AUDIO") userStat.fakeOrEmptyAudio += 1;
+        }
+      });
+
+      const userList = Array.from(userMap.values());
+      const isQcCompletedForSurvey = overallQcCompletedCount > 0;
+
+      // 2. Build rows according to whether QC is completed or not
+      let reportRows = [];
+
+      if (isQcCompletedForSurvey) {
+        // DETAILED COLUMNS: Valid vs Invalid survey counts per user
+        reportRows = userList.map((u, idx) => {
+          const validPct = u.totalCompleted > 0 ? ((u.validCount / u.totalCompleted) * 100).toFixed(1) + "%" : "0%";
+          const qcStatus = u.pendingCount === 0 ? "QC Completed" : u.validCount + u.invalidCount > 0 ? "Partially QC'd" : "Pending QC";
+
+          return {
+            "S.No.": idx + 1,
+            "User Code": u.userCode,
+            "Surveyor Name": u.userName,
+            "Mobile Number": u.userMobile,
+            "Total Sample Completed": u.totalCompleted,
+            "Valid Surveys (Approved)": u.validCount,
+            "Invalid Surveys (Rejected)": u.invalidCount,
+            "Pending QC": u.pendingCount,
+            "QC Status": qcStatus,
+            "Validation Rate": validPct,
+            "Invalid: Not Asking All Questions": u.notAskingAllQuestions,
+            "Invalid: Not Doing Properly": u.notDoingProperly,
+            "Invalid: Taking From Teammate": u.takingFromFriends,
+            "Invalid: Fake/Empty Audio": u.fakeOrEmptyAudio,
+            "Last Submission Date (IST)": fmtDateTime(u.lastResponseAt),
+          };
+        });
+      } else {
+        // WHEN QC IS NOT COMPLETED: simply display Total Count of sample surveys completed by each user
+        reportRows = userList.map((u, idx) => ({
+          "S.No.": idx + 1,
+          "User Code": u.userCode,
+          "Surveyor Name": u.userName,
+          "Mobile Number": u.userMobile,
+          "Total Sample Surveys Completed": u.totalCompleted,
+          "QC Status": "QC Not Completed / Pending",
+          "Last Submission Date (IST)": fmtDateTime(u.lastResponseAt),
+        }));
+      }
+
+      // 3. Create Excel Workbook with Meta sheet + User-Wise Report sheet
+      const wb = XLSX.utils.book_new();
+
+      const metaSheetData = [
+        ["User-Wise Survey Report"],
+        ["Survey ID", surveySummaryItem.surveyId],
+        ["Survey Code", surveySummaryItem.surveyCode || "-"],
+        ["Survey Name", surveySummaryItem.name || "-"],
+        ["Total Survey Responses", rawResponses.length],
+        ["Total Unique Surveyors", userList.length],
+        ["QC Mode", isQcCompletedForSurvey ? "QC Completed (Valid vs Invalid Breakdown)" : "QC Not Completed (Sample Survey Counts)"],
+        ["Exported At (IST)", new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })],
+      ];
+      const metaWs = XLSX.utils.aoa_to_sheet(metaSheetData);
+      XLSX.utils.book_append_sheet(wb, metaWs, "Summary");
+
+      const reportWs = XLSX.utils.json_to_sheet(reportRows);
+      XLSX.utils.book_append_sheet(wb, reportWs, "User-Wise Report");
+
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([wbout], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const safeName =
+        (surveySummaryItem.name || "survey")
+          .replace(/[^\w\-]+/g, "_")
+          .substring(0, 80) + "_user_wise_report.xlsx";
+
+      link.href = url;
+      link.setAttribute("download", safeName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success("User-Wise Survey Report successfully exported!");
+    } catch (err) {
+      console.error("handleExportUserWiseReport error:", err);
+      toast.error(err?.response?.data?.message || err?.message || "Failed to export User-Wise Survey Report.");
+    } finally {
+      setExportingSurveyId(null);
+    }
+  };
+
+  // ---------------- QC USER REPORT EXPORT ----------------
+  const handleExportQCUserReport = async (surveySummaryItem) => {
+    if (!surveySummaryItem) return;
+
+    try {
+      setExportingSurveyId(surveySummaryItem.surveyId);
+      toast.info("QC User Report prepare ho raha hai...");
+
+      const respRes = await getSurveyResponses(surveySummaryItem.surveyId);
+      const rawResponses = respRes.responses || [];
+
+      if (rawResponses.length === 0) {
+        toast.error("Is survey ke liye export karne layak koi sample response nahi mila.");
+        setExportingSurveyId(null);
+        return;
+      }
+
+      // 1. Calculate per-surveyor metrics (Total Samples & Total Approved)
+      const surveyorMetrics = new Map();
+      rawResponses.forEach((r) => {
+        const uKey = String(r.userCode || r.userName || "UNKNOWN").trim();
+        if (!surveyorMetrics.has(uKey)) {
+          surveyorMetrics.set(uKey, {
+            userName: r.userName || r.userCode || "Unknown Surveyor",
+            userCode: r.userCode || "-",
+            userMobile: r.userMobile || "-",
+            totalSubmitted: 0,
+            totalApproved: 0,
+            totalRejected: 0,
+            totalPending: 0,
+          });
+        }
+        const sm = surveyorMetrics.get(uKey);
+        sm.totalSubmitted += 1;
+        const status = r.approvalStatus || (r.isApproved ? "CORRECTLY_DONE" : "PENDING");
+        if (status === "CORRECTLY_DONE" || r.isApproved === true) {
+          sm.totalApproved += 1;
+        } else if (status === "PENDING") {
+          sm.totalPending += 1;
+        } else {
+          sm.totalRejected += 1;
+        }
+      });
+
+      // 2. Remarks mapping for inspection comments
+      const getQcRemarksAndStatus = (status, isApproved) => {
+        switch (status) {
+          case "CORRECTLY_DONE":
+            return {
+              statusText: "Correctly Done (Approved)",
+              remarks: "Audio and responses verified clear & compliant",
+            };
+          case "NOT_ASKING_ALL_QUESTIONS":
+            return {
+              statusText: "Rejected: Incomplete Interview",
+              remarks: "Surveyor skipped mandatory survey questions during interview",
+            };
+          case "NOT_DOING_IT_PROPERLY":
+            return {
+              statusText: "Rejected: Protocol Violation",
+              remarks: "Interview protocol not followed properly / surveyor rushed",
+            };
+          case "TAKING_FROM_FRIENDS_OR_TEAMMATE":
+            return {
+              statusText: "Rejected: Proxy / Teammate",
+              remarks: "Responses recorded from teammates or friends instead of respondent",
+            };
+          case "FAKE_OR_EMPTY_AUDIO":
+            return {
+              statusText: "Rejected: Fake / Corrupted Audio",
+              remarks: "Audio contains blank silence, background noise, or fake recording",
+            };
+          case "PENDING":
+          default:
+            return isApproved
+              ? {
+                  statusText: "Correctly Done (Approved)",
+                  remarks: "Verified & approved",
+                }
+              : {
+                  statusText: "Pending QC Review",
+                  remarks: "Awaiting inspection by QC Engineer",
+                };
+        }
+      };
+
+      // 3. Build Sample-Level Detailed Rows
+      const detailedSampleRows = rawResponses.map((r, idx) => {
+        const uKey = String(r.userCode || r.userName || "UNKNOWN").trim();
+        const surveyor = surveyorMetrics.get(uKey) || {};
+        const { statusText, remarks } = getQcRemarksAndStatus(r.approvalStatus, r.isApproved);
+
+        return {
+          "S.No.": idx + 1,
+          "Sample ID": String(r.responseId || r._id || `SMP-${idx + 1}`),
+          "Surveyor Name": surveyor.userName || r.userName || "-",
+          "Surveyor Code": surveyor.userCode || r.userCode || "-",
+          "Surveyor Mobile": surveyor.userMobile || r.userMobile || "-",
+          "Total Samples Submitted": surveyor.totalSubmitted || 1,
+          "Total Approved Samples": surveyor.totalApproved || 0,
+          "QC Agent Name": r.approvedByName || "Pending / Unassigned",
+          "QC Agent Code": r.approvedByUserCode || "-",
+          "Sample Status": statusText,
+          "QC Remarks / Comments": remarks,
+          "Audio Review Link": r.audioUrl || "No Audio Recording",
+          "Latitude": r.latitude || "-",
+          "Longitude": r.longitude || "-",
+          "Submission Date (IST)": fmtDateTime(r.createdAtIST || r.createdAt),
+          "QC Verification Date": r.approvedAt ? fmtDateTime(r.approvedAt) : (r.isApproved ? fmtDateTime(r.updatedAt) : "Pending"),
+        };
+      });
+
+      // 4. Build Surveyor Summary Rows
+      const surveyorSummaryRows = Array.from(surveyorMetrics.values()).map((sm, idx) => ({
+        "S.No.": idx + 1,
+        "Surveyor Name": sm.userName,
+        "Surveyor Code": sm.userCode,
+        "Mobile Number": sm.userMobile,
+        "Total Samples Submitted": sm.totalSubmitted,
+        "Total Approved Samples": sm.totalApproved,
+        "Total Rejected Samples": sm.totalRejected,
+        "Pending QC Samples": sm.totalPending,
+        "Approval Rate (%)": sm.totalSubmitted > 0 ? ((sm.totalApproved / sm.totalSubmitted) * 100).toFixed(1) + "%" : "0%",
+      }));
+
+      // 5. Create Excel Workbook
+      const wb = XLSX.utils.book_new();
+
+      const metaSheetData = [
+        ["QC User Report - Survey Verification & Audio Review"],
+        ["Survey ID", surveySummaryItem.surveyId],
+        ["Survey Code", surveySummaryItem.surveyCode || "-"],
+        ["Survey Name", surveySummaryItem.name || "-"],
+        ["Total Samples Submitted", rawResponses.length],
+        ["Total Unique Surveyors", surveyorMetrics.size],
+        ["Exported At (IST)", new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })],
+      ];
+      const metaWs = XLSX.utils.aoa_to_sheet(metaSheetData);
+      XLSX.utils.book_append_sheet(wb, metaWs, "Report Overview");
+
+      const samplesWs = XLSX.utils.json_to_sheet(detailedSampleRows);
+      XLSX.utils.book_append_sheet(wb, samplesWs, "QC Sample Details");
+
+      const surveyorsWs = XLSX.utils.json_to_sheet(surveyorSummaryRows);
+      XLSX.utils.book_append_sheet(wb, surveyorsWs, "Surveyor QC Summary");
+
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([wbout], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const safeName =
+        (surveySummaryItem.name || "survey")
+          .replace(/[^\w\-]+/g, "_")
+          .substring(0, 80) + "_QC_User_Report.xlsx";
+
+      link.href = url;
+      link.setAttribute("download", safeName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success("QC User Report successfully exported!");
+    } catch (err) {
+      console.error("handleExportQCUserReport error:", err);
+      toast.error(err?.response?.data?.message || err?.message || "Failed to export QC User Report.");
+    } finally {
+      setExportingSurveyId(null);
+    }
+  };
+
+  // ---------------- SURVEYOR WISE DATA REPORT (LIGHTWEIGHT QC SUMMARY) ----------------
+  const handleExportSurveyorWiseQCReport = async (surveySummaryItem) => {
+    if (!surveySummaryItem) return;
+
+    try {
+      setExportingSurveyId(surveySummaryItem.surveyId);
+      toast.info("Surveyor Wise Data Report prepare ho raha hai...");
+
+      const respRes = await getSurveyResponses(surveySummaryItem.surveyId);
+      const rawResponses = respRes.responses || [];
+
+      if (rawResponses.length === 0) {
+        toast.error("Is survey ke liye export karne layak koi response nahi mila.");
+        setExportingSurveyId(null);
+        return;
+      }
+
+      // Strictly 4 columns only: QC User Name, Surveyor Name, Audio URL, QC Remark/Status
+      const rows = rawResponses.map((r) => {
+        let remarkStatus = "Pending";
+        switch (r.approvalStatus) {
+          case "CORRECTLY_DONE":
+            remarkStatus = "Correctly Done";
+            break;
+          case "NOT_ASKING_ALL_QUESTIONS":
+            remarkStatus = "Not asking all questions";
+            break;
+          case "NOT_DOING_IT_PROPERLY":
+            remarkStatus = "Not doing it properly";
+            break;
+          case "TAKING_FROM_FRIENDS_OR_TEAMMATE":
+            remarkStatus = "Taking from friends or teammate";
+            break;
+          case "FAKE_OR_EMPTY_AUDIO":
+            remarkStatus = "Fake or empty audio";
+            break;
+          case "PENDING":
+          default:
+            remarkStatus = r.isApproved ? "Correctly Done" : "Pending";
+            break;
+        }
+
+        return {
+          "QC User Name": r.approvedByName || "Pending Review",
+          "Surveyor Name": r.userName || r.userCode || "Unknown Surveyor",
+          "Audio URL": r.audioUrl || "No Audio Recording",
+          "QC Remark/Status": remarkStatus,
+        };
+      });
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, "Surveyor Wise QC");
+
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([wbout], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const safeName =
+        (surveySummaryItem.name || "survey")
+          .replace(/[^\w\-]+/g, "_")
+          .substring(0, 80) + "_Surveyor_Wise_QC_Report.xlsx";
+
+      link.href = url;
+      link.setAttribute("download", safeName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success("Surveyor Wise Data Report successfully exported!");
+    } catch (err) {
+      console.error("handleExportSurveyorWiseQCReport error:", err);
+      toast.error(err?.response?.data?.message || err?.message || "Failed to export Surveyor Wise Data Report.");
     } finally {
       setExportingSurveyId(null);
     }
@@ -1405,39 +1817,68 @@ export default function SurveyResponses() {
 
                   {/* Export buttons */}
                   <td className="px-4 py-3 text-xs">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleExportSurveyCSV(s)}
-                        disabled={exportingSurveyId === s.surveyId}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-[11px] font-semibold disabled:opacity-60"
-                        style={{
-                          borderColor: themeColors.primary,
-                          backgroundColor: themeColors.surface,
-                          color: themeColors.primary,
-                        }}
-                      >
-                        <FaFileExcel />
-                        {exportingSurveyId === s.surveyId
-                          ? "Exporting..."
-                          : "CSV"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleExportSurveyExcel(s)}
-                        disabled={exportingSurveyId === s.surveyId}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border text-[11px] font-semibold disabled:opacity-60"
-                        style={{
-                          borderColor: themeColors.primary,
-                          backgroundColor: themeColors.surface,
-                          color: themeColors.primary,
-                        }}
-                      >
-                        <FaFileExcel />
-                        {exportingSurveyId === s.surveyId
-                          ? "Exporting..."
-                          : "Excel"}
-                      </button>
+                    <div className="flex flex-col gap-1.5 min-w-[200px]">
+                      {/* 1. Report 1: Raw Data Report */}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleExportSurveyExcel(s)}
+                          disabled={exportingSurveyId === s.surveyId}
+                          title="Export complete raw survey data (All questions, answers & metadata)"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold disabled:opacity-60 transition-colors"
+                          style={{
+                            borderColor: themeColors.primary,
+                            backgroundColor: themeColors.surface,
+                            color: themeColors.primary,
+                          }}
+                        >
+                          <FaFileExcel />
+                          <span>Raw Data (Excel)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleExportSurveyCSV(s)}
+                          disabled={exportingSurveyId === s.surveyId}
+                          title="Export complete raw survey data as CSV"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold disabled:opacity-60 transition-colors"
+                          style={{
+                            borderColor: themeColors.primary,
+                            backgroundColor: themeColors.surface,
+                            color: themeColors.primary,
+                          }}
+                        >
+                          <FaFileExcel />
+                          <span>CSV</span>
+                        </button>
+                      </div>
+
+                      {/* 2. Report 2: Surveyor Wise Data Report (Lightweight 4-Column QC Summary) - Right below Raw Data */}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleExportSurveyorWiseQCReport(s)}
+                          disabled={exportingSurveyId === s.surveyId}
+                          title="Export Surveyor Wise Data Report (Strictly: QC User Name, Surveyor Name, Audio URL, QC Remark/Status)"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold disabled:opacity-60 transition-colors shadow-sm bg-purple-50 text-purple-700 border-purple-300 hover:bg-purple-100 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800"
+                        >
+                          <FaHeadphones />
+                          <span>Surveyor Wise Data Report</span>
+                        </button>
+                      </div>
+
+                      {/* Additional User-Wise Summary Option */}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleExportUserWiseReport(s)}
+                          disabled={exportingSurveyId === s.surveyId}
+                          title="Export User-Wise Survey Report (Valid vs Invalid Counts / Total Samples)"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold disabled:opacity-60 transition-colors shadow-sm bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                        >
+                          <FaUserCheck />
+                          <span>User-Wise Report</span>
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>

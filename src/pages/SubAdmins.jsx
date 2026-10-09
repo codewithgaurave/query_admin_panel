@@ -39,18 +39,11 @@ export const AVAILABLE_MODULES = [
   {
     key: "dashboard",
     name: "Dashboard Overview",
-    desc: "View overall summary counters, active surveys, response stats & recent activity",
+    desc: "View summary counters, response stats & recent field activity",
     icon: FaTachometerAlt,
     bgActive: "bg-indigo-50 border-indigo-200 text-indigo-700",
     badgeBg: "bg-indigo-100 text-indigo-800",
-  },
-  {
-    key: "surveys",
-    name: "Surveys Management",
-    desc: "Create, edit, duplicate surveys and configure survey questions",
-    icon: FaClipboardList,
-    bgActive: "bg-blue-50 border-blue-200 text-blue-700",
-    badgeBg: "bg-blue-100 text-blue-800",
+    isSuperAdminOnly: false,
   },
   {
     key: "surveyResponses",
@@ -59,22 +52,7 @@ export const AVAILABLE_MODULES = [
     icon: FaUsers,
     bgActive: "bg-emerald-50 border-emerald-200 text-emerald-700",
     badgeBg: "bg-emerald-100 text-emerald-800",
-  },
-  {
-    key: "surveyCharts",
-    name: "Analytics & Charts",
-    desc: "View visual graphical breakdowns and charts for survey questions",
-    icon: FaChartBar,
-    bgActive: "bg-purple-50 border-purple-200 text-purple-700",
-    badgeBg: "bg-purple-100 text-purple-800",
-  },
-  {
-    key: "users",
-    name: "User Management",
-    desc: "Manage surveyors and QC engineers, create accounts, edit and block/unblock",
-    icon: FaUser,
-    bgActive: "bg-amber-50 border-amber-200 text-amber-800",
-    badgeBg: "bg-amber-100 text-amber-900",
+    isSuperAdminOnly: false,
   },
   {
     key: "punchins",
@@ -83,23 +61,53 @@ export const AVAILABLE_MODULES = [
     icon: FaMapMarkerAlt,
     bgActive: "bg-rose-50 border-rose-200 text-rose-700",
     badgeBg: "bg-rose-100 text-rose-800",
+    isSuperAdminOnly: false,
   },
   {
     key: "pinnedQuestions",
     name: "Pinned Questions",
-    desc: "View and manage pinned questions dynamic analytical cards on dashboard",
+    desc: "View pinned questions dynamic analytical cards on dashboard",
     icon: FaThumbtack,
     bgActive: "bg-cyan-50 border-cyan-200 text-cyan-800",
     badgeBg: "bg-cyan-100 text-cyan-900",
+    isSuperAdminOnly: false,
+  },
+  // 🔒 SUPER ADMIN EXCLUSIVE MODULES (Cannot be assigned to Sub Admins)
+  {
+    key: "surveys",
+    name: "Surveys Management",
+    desc: "Create, edit, duplicate surveys and configure survey questions",
+    icon: FaClipboardList,
+    bgActive: "bg-slate-100 border-slate-300 text-slate-400",
+    badgeBg: "bg-amber-100 text-amber-800",
+    isSuperAdminOnly: true,
+  },
+  {
+    key: "users",
+    name: "User Management",
+    desc: "Manage surveyors and QC engineers, create accounts, edit and block/unblock",
+    icon: FaUser,
+    bgActive: "bg-slate-100 border-slate-300 text-slate-400",
+    badgeBg: "bg-amber-100 text-amber-800",
+    isSuperAdminOnly: true,
+  },
+  {
+    key: "surveyCharts",
+    name: "Analytics & Charts",
+    desc: "View platform-wide graphical breakdowns, charts and analytics",
+    icon: FaChartBar,
+    bgActive: "bg-slate-100 border-slate-300 text-slate-400",
+    badgeBg: "bg-amber-100 text-amber-800",
+    isSuperAdminOnly: true,
   },
 ];
 
 export const DEFAULT_PERMISSIONS = {
   dashboard: true,
-  surveys: true,
+  surveys: false,       // Exclusive to Super Admin
   surveyResponses: true,
-  surveyCharts: true,
-  users: false,
+  surveyCharts: false,  // Exclusive to Super Admin
+  users: false,         // Exclusive to Super Admin
   punchins: false,
   pinnedQuestions: false,
 };
@@ -240,6 +248,8 @@ export default function SubAdmins() {
 
   // Permission toggle helpers
   const toggleCreatePermission = (key) => {
+    const mod = AVAILABLE_MODULES.find((m) => m.key === key);
+    if (mod?.isSuperAdminOnly) return; // Cannot enable Super Admin exclusive modules
     setCreateForm((prev) => ({
       ...prev,
       permissions: {
@@ -252,12 +262,14 @@ export default function SubAdmins() {
   const setAllCreatePermissions = (value) => {
     const newPerms = {};
     AVAILABLE_MODULES.forEach((m) => {
-      newPerms[m.key] = value;
+      newPerms[m.key] = m.isSuperAdminOnly ? false : value;
     });
     setCreateForm((prev) => ({ ...prev, permissions: newPerms }));
   };
 
   const toggleEditPermission = (key) => {
+    const mod = AVAILABLE_MODULES.find((m) => m.key === key);
+    if (mod?.isSuperAdminOnly) return; // Cannot enable Super Admin exclusive modules
     setEditForm((prev) => ({
       ...prev,
       permissions: {
@@ -270,7 +282,7 @@ export default function SubAdmins() {
   const setAllEditPermissions = (value) => {
     const newPerms = {};
     AVAILABLE_MODULES.forEach((m) => {
-      newPerms[m.key] = value;
+      newPerms[m.key] = m.isSuperAdminOnly ? false : value;
     });
     setEditForm((prev) => ({ ...prev, permissions: newPerms }));
   };
@@ -724,32 +736,44 @@ export default function SubAdmins() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {AVAILABLE_MODULES.map((mod) => {
                     const isChecked = createForm.permissions[mod.key] === true;
+                    const isLocked = mod.isSuperAdminOnly;
                     const Icon = mod.icon;
                     return (
                       <div
                         key={mod.key}
-                        onClick={() => toggleCreatePermission(mod.key)}
-                        className={`p-3 rounded-xl border transition-all cursor-pointer select-none flex items-start gap-3 ${
-                          isChecked
-                            ? `${mod.bgActive} shadow-xs`
-                            : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600"
+                        onClick={() => !isLocked && toggleCreatePermission(mod.key)}
+                        className={`p-3 rounded-xl border transition-all select-none flex items-start gap-3 ${
+                          isLocked
+                            ? "bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed text-slate-400"
+                            : isChecked
+                            ? `${mod.bgActive} shadow-xs cursor-pointer`
+                            : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600 cursor-pointer"
                         }`}
                       >
                         <div
                           className={`mt-0.5 w-5 h-5 rounded flex items-center justify-center border text-xs transition-colors ${
-                            isChecked
+                            isLocked
+                              ? "bg-slate-200 border-slate-300 text-slate-500"
+                              : isChecked
                               ? "bg-blue-600 text-white border-blue-600"
                               : "bg-white border-slate-300 text-transparent"
                           }`}
                         >
-                          <FaCheck className="text-[10px]" />
+                          {isLocked ? <FaLock className="text-[9px]" /> : <FaCheck className="text-[10px]" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <Icon className="text-sm shrink-0" />
-                            <span className="text-xs font-bold truncate">
-                              {mod.name}
-                            </span>
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Icon className="text-sm shrink-0" />
+                              <span className="text-xs font-bold truncate">
+                                {mod.name}
+                              </span>
+                            </div>
+                            {isLocked && (
+                              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300/80 shrink-0">
+                                Super Admin Only
+                              </span>
+                            )}
                           </div>
                           <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2 leading-tight">
                             {mod.desc}
@@ -939,32 +963,44 @@ export default function SubAdmins() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {AVAILABLE_MODULES.map((mod) => {
                     const isChecked = editForm.permissions[mod.key] === true;
+                    const isLocked = mod.isSuperAdminOnly;
                     const Icon = mod.icon;
                     return (
                       <div
                         key={mod.key}
-                        onClick={() => toggleEditPermission(mod.key)}
-                        className={`p-3 rounded-xl border transition-all cursor-pointer select-none flex items-start gap-3 ${
-                          isChecked
-                            ? `${mod.bgActive} shadow-xs`
-                            : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600"
+                        onClick={() => !isLocked && toggleEditPermission(mod.key)}
+                        className={`p-3 rounded-xl border transition-all select-none flex items-start gap-3 ${
+                          isLocked
+                            ? "bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed text-slate-400"
+                            : isChecked
+                            ? `${mod.bgActive} shadow-xs cursor-pointer`
+                            : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600 cursor-pointer"
                         }`}
                       >
                         <div
                           className={`mt-0.5 w-5 h-5 rounded flex items-center justify-center border text-xs transition-colors ${
-                            isChecked
+                            isLocked
+                              ? "bg-slate-200 border-slate-300 text-slate-500"
+                              : isChecked
                               ? "bg-indigo-600 text-white border-indigo-600"
                               : "bg-white border-slate-300 text-transparent"
                           }`}
                         >
-                          <FaCheck className="text-[10px]" />
+                          {isLocked ? <FaLock className="text-[9px]" /> : <FaCheck className="text-[10px]" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <Icon className="text-sm shrink-0" />
-                            <span className="text-xs font-bold truncate">
-                              {mod.name}
-                            </span>
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Icon className="text-sm shrink-0" />
+                              <span className="text-xs font-bold truncate">
+                                {mod.name}
+                              </span>
+                            </div>
+                            {isLocked && (
+                              <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300/80 shrink-0">
+                                Super Admin Only
+                              </span>
+                            )}
                           </div>
                           <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2 leading-tight">
                             {mod.desc}

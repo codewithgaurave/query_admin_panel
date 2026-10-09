@@ -116,6 +116,7 @@ export default function Surveys() {
     // ✅ NEW: selected users for this survey
     assignedUserIds: [],
     assignedQCIds: [], // ✅ QCs assignment array
+    mainAdminId: "", // ⭐ Main Admin (Owner/Sub Admin) assignment
   };
 
   const [newSurvey, setNewSurvey] = useState(emptySurveyForm);
@@ -384,6 +385,11 @@ export default function Surveys() {
         : [],
       assignedUserIds: assignedIds,
       assignedQCIds: assignedQcIds, // ✅
+      mainAdminId:
+        survey.createdByAdmin?._id ||
+        (typeof survey.createdByAdmin === "string"
+          ? survey.createdByAdmin
+          : ""),
     }));
   };
 
@@ -486,6 +492,7 @@ export default function Surveys() {
             newSurvey.assignedQCIds.length > 0
               ? newSurvey.assignedQCIds
               : [],
+          mainAdminId: newSurvey.mainAdminId || undefined,
         };
 
         const res = await createSurvey(payload);
@@ -520,6 +527,7 @@ export default function Surveys() {
             newSurvey.assignedQCIds.length > 0
               ? newSurvey.assignedQCIds
               : [],
+          mainAdminId: newSurvey.mainAdminId || undefined,
         };
 
         const res = await updateSurvey(editingSurveyId, payload);
@@ -750,6 +758,36 @@ export default function Surveys() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* ⭐ MAIN ADMIN (QUESTIONNAIRE OWNER / SUB ADMIN) SELECTION */}
+            <div className="md:col-span-2 lg:col-span-3 p-3.5 rounded-xl border bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-900/60 space-y-1.5">
+              <label className="text-xs font-bold block flex items-center gap-1.5 text-indigo-900 dark:text-indigo-200">
+                <FaUserShield className="text-indigo-600 dark:text-indigo-400" />
+                Main Admin (Questionnaire Owner / Sub Admin Assignment)
+              </label>
+              <select
+                value={newSurvey.mainAdminId || ""}
+                onChange={(e) =>
+                  handleCreateChange("mainAdminId", e.target.value)
+                }
+                className="w-full px-3 py-2 rounded-lg border text-sm font-medium focus:ring-2 focus:ring-indigo-500/20"
+                style={{
+                  borderColor: themeColors.border,
+                  backgroundColor: themeColors.background,
+                  color: themeColors.text,
+                }}
+              >
+                <option value="">Super Admin (Default / Self Ownership)</option>
+                {subAdmins.map((sa) => (
+                  <option key={sa._id} value={sa._id}>
+                    {sa.name} ({sa.adminId}) — Sub Admin
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                Selected Main Admin will receive access to view, manage, and export all responses/reports for this questionnaire. (Super Admin always retains global access).
+              </p>
             </div>
 
             {/* Description */}
