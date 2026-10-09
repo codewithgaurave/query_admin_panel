@@ -919,19 +919,16 @@ export default function SurveyCharts() {
       </div>
 
       {/* Layout: left survey list, right charts */}
-      <div className="grid gap-4 lg:gap-5 lg:grid-cols-[280px,1fr]">
+      <div className="grid grid-cols-1 md:grid-cols-[290px,1fr] xl:grid-cols-[320px,1fr] gap-5 items-start">
         {/* Left: survey list panel */}
-        {/* ... (yeh part same hai, maine upar se kuch change nahi kiya) ... */}
-
-        {/* Left panel exactly same as your last code */}
         <div
-          className="rounded-2xl border p-4 space-y-3 shadow-sm max-h-[75vh]"
+          className="rounded-2xl border p-4 shadow-sm flex flex-col md:sticky md:top-4 h-[75vh] min-h-[480px]"
           style={{
             backgroundColor: themeColors.surface,
             borderColor: themeColors.border,
           }}
         >
-          <div className="space-y-2">
+          <div className="space-y-2 shrink-0">
             <div className="relative">
               <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60 text-sm" />
               <input
@@ -963,7 +960,7 @@ export default function SurveyCharts() {
             </select>
           </div>
 
-          <div className="text-xs md:text-sm font-semibold flex items-center justify-between mt-1">
+          <div className="text-xs md:text-sm font-semibold flex items-center justify-between mt-3 mb-2 shrink-0">
             <span style={{ color: themeColors.text }}>Surveys</span>
             <span
               style={{ color: themeColors.text }}
@@ -973,10 +970,10 @@ export default function SurveyCharts() {
             </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-2 pt-1 pr-1">
+          <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0">
             {filteredSurveys.length === 0 && (
               <p
-                className="text-xs md:text-sm opacity-75"
+                className="text-xs md:text-sm opacity-75 py-4 text-center"
                 style={{ color: themeColors.text }}
               >
                 Koi survey match nahi hua.
@@ -1010,7 +1007,7 @@ export default function SurveyCharts() {
                       {s.name || "Untitled Survey"}
                     </span>
                     <span
-                      className="text-xs px-2 py-0.5 rounded-full border"
+                      className="text-xs px-2 py-0.5 rounded-full border shrink-0"
                       style={{
                         borderColor: themeColors.border,
                         color: themeColors.text,
@@ -1058,7 +1055,7 @@ export default function SurveyCharts() {
         </div>
 
         {/* Right: active survey charts */}
-        <div className="space-y-4 md:space-y-5">
+        <div className="space-y-4 md:space-y-5 min-w-0">
           {!activeSurvey && (
             <p
               className="text-sm md:text-base opacity-75"
@@ -1211,9 +1208,7 @@ export default function SurveyCharts() {
                     </span>
                     <span> of </span>
                     <span className="font-semibold">
-                      {activeSurvey.responses?.length ??
-                        activeSurvey.totalResponses ??
-                        0}
+                      {activeSurvey.totalResponses || filteredResponses.length || 0}
                     </span>
                     <span> responses</span>
                   </div>
