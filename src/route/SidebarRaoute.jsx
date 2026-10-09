@@ -16,26 +16,16 @@ import {
   FaUserShield,      // ⭐ Sub Admin icon
 } from "react-icons/fa";
 
-// Existing pages
+// Pages
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const Users = lazy(() => import("../pages/Users"));
-const SubAdmins = lazy(() => import("../pages/SubAdmins")); // ⭐ Sub Admins page
-
-// New survey pages
+const SubAdmins = lazy(() => import("../pages/SubAdmins")); // ⭐ Sub Admins page (Super Admin only)
 const Surveys = lazy(() => import("../pages/Surveys"));
 const SurveyQuestions = lazy(() => import("../pages/SurveyQuestions"));
 const SurveyResponses = lazy(() => import("../pages/SurveyResponses"));
-const SurveyCharts = lazy(() => import("../pages/SurveyCharts")); // ⭐ charts page
-
-// ⭐ NEW: Punch-ins page
+const SurveyCharts = lazy(() => import("../pages/SurveyCharts"));
 const Punchins = lazy(() => import("../pages/Punchins"));
-
-// ⭐ NEW: Pinned Questions Dashboard page
-const SurveyDashboardPins = lazy(() =>
-  import("../pages/SurveyDashboardPins")
-);
-
-// ⭐ NEW: Admin Profile page
+const SurveyDashboardPins = lazy(() => import("../pages/SurveyDashboardPins"));
 const AdminProfile = lazy(() => import("../pages/AdminProfile"));
 
 const routes = [
@@ -44,25 +34,35 @@ const routes = [
     component: Dashboard,
     name: "Dashboard",
     icon: FaTachometerAlt,
+    permission: "dashboard",
   },
 
-  // ⭐ NEW: Sub Admins management
+  // ⭐ Sub Admins management (Super Admin Only)
   {
     path: "/sub-admins",
     component: SubAdmins,
     name: "Sub Admins",
     icon: FaUserShield,
+    superAdminOnly: true,
   },
 
-  // ⭐ NEW: Pinned Questions Dashboard – sidebar me Dashboard ke just niche
+  // ⭐ Pinned Questions Dashboard
   {
     path: "/survey-dashboard",
     component: SurveyDashboardPins,
     name: "Pinned Questions",
     icon: FaThumbtack,
+    permission: "pinnedQuestions",
   },
 
-  { path: "/users", component: Users, name: "Users", icon: FaUsers },
+  // ⭐ Users management
+  {
+    path: "/users",
+    component: Users,
+    name: "Users",
+    icon: FaUsers,
+    permission: "users",
+  },
 
   // ⭐ Punch-ins history page
   {
@@ -70,6 +70,7 @@ const routes = [
     component: Punchins,
     name: "Punch-ins",
     icon: FaMapMarkerAlt,
+    permission: "punchins",
   },
 
   // ⭐ Active Surveys main page
@@ -78,6 +79,7 @@ const routes = [
     component: Surveys,
     name: "Active Surveys",
     icon: FaClipboardList,
+    permission: "surveys",
   },
 
   // ⭐ Closed / Inactive Surveys page
@@ -86,6 +88,7 @@ const routes = [
     component: Surveys,
     name: "Closed Surveys",
     icon: FaStopCircle,
+    permission: "surveys",
   },
 
   // ⭐ Survey responses dashboard
@@ -93,7 +96,8 @@ const routes = [
     path: "/survey-responses",
     component: SurveyResponses,
     name: "Survey Responses",
-    icon: FaUsers, // ya koi aur icon jo tumhe pasand ho
+    icon: FaUsers,
+    permission: "surveyResponses",
   },
 
   // ⭐ Survey charts / analytics page
@@ -102,9 +106,10 @@ const routes = [
     component: SurveyCharts,
     name: "Survey Charts",
     icon: FaChartBar,
+    permission: "surveyCharts",
   },
 
-  // ⭐ Admin Profile
+  // ⭐ Admin Profile (Accessible to everyone)
   {
     path: "/profile",
     component: AdminProfile,
@@ -118,7 +123,8 @@ const routes = [
     component: SurveyQuestions,
     name: "Manage Questions",
     icon: FaQuestionCircle,
-    hide: true, // ✅ sidebar me mat dikhana
+    permission: "surveys",
+    hide: true,
   },
 ];
 

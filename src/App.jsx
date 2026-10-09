@@ -15,33 +15,73 @@ const LoadingSpinner = () => (
   </div>
 );
 
+// Helper to determine first accessible page for the logged-in user
+export const getFirstAllowedPath = (user) => {
+  if (!user) return "/login";
+  if (user.role === "SUPER_ADMIN") return "/dashboard";
+  const perms = user.permissions || {};
+  for (const r of routes) {
+    if (!r.hide && !r.superAdminOnly) {
+      if (!r.permission || perms[r.permission] === true) {
+        return r.path;
+      }
+    }
+  }
+  return "/profile";
+};
+
+// Route protection guard based on role and permissions
+const PermissionRoute = ({ route, user, children }) => {
+  if (route.superAdminOnly && user?.role !== "SUPER_ADMIN") {
+    return <Navigate to={getFirstAllowedPath(user)} replace />;
+  }
+  if (!route.permission || user?.role === "SUPER_ADMIN") {
+    return children;
+  }
+  const perms = user?.permissions || {};
+  if (perms[route.permission] === true) {
+    return children;
+  }
+  return <Navigate to={getFirstAllowedPath(user)} replace />;
+};
+
 function App() {
-  const { isLoggedIn, loading } = useAuth();
+  const { isLoggedIn, loading, admin } = useAuth();
 
   if (loading) return <LoadingSpinner />;
+
+  const homePath = getFirstAllowedPath(admin);
 
   return (
     <Router>
       <Toaster position="top-right" />
       <Routes>
         {/* Public */}
-        <Route path="/login" element={isLoggedIn ? <Navigate to="/dashboard" replace /> : <Login />} />
+        <Route
+          path="/login"
+          element={isLoggedIn ? <Navigate to={homePath} replace /> : <Login />}
+        />
 
         {/* Protected */}
         {isLoggedIn ? (
           <Route element={<DashboardLayout />}>
-            {routes.map(({ path, component: Component }) => (
-              <Route
-                key={path}
-                path={path}
-                element={
-                  <Suspense fallback={<LoadingSpinner />}>
-                    <Component />
-                  </Suspense>
-                }
-              />
-            ))}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            {routes.map((route) => {
+              const Component = route.component;
+              return (
+                <Route
+                  key={route.path}
+                  path={route.path}
+                  element={
+                    <PermissionRoute route={route} user={admin}>
+                      <Suspense fallback={<LoadingSpinner />}>
+                        <Component />
+                      </Suspense>
+                    </PermissionRoute>
+                  }
+                />
+              );
+            })}
+            <Route path="*" element={<Navigate to={homePath} replace />} />
           </Route>
         ) : (
           <Route path="*" element={<Navigate to="/login" replace />} />

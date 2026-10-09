@@ -5,6 +5,7 @@ import { useTheme } from "../context/ThemeContext";
 import { useFont } from "../context/FontContext";
 import { useNavigate } from "react-router-dom";
 import { adminLogin } from "../apis/auth";
+import { getFirstAllowedPath } from "../App";
 
 const Login = () => {
   const [credentials, setCredentials] = useState({
@@ -36,13 +37,13 @@ const Login = () => {
       });
 
       // Backend expected:
-      // { message, admin: { adminId, name, id }, token }
+      // { message, admin: { adminId, name, role, permissions, id }, token }
       if (!res || !res.token || !res.admin) {
         throw new Error("Invalid response from server");
       }
 
       const adminObject = {
-        ...res.admin, // adminId, name, id
+        ...res.admin,
         token: res.token,
       };
 
@@ -52,7 +53,8 @@ const Login = () => {
       // Ensure token stored for interceptors
       localStorage.setItem("admin-token", res.token);
 
-      navigate("/dashboard", { replace: true });
+      const targetPath = getFirstAllowedPath(adminObject);
+      navigate(targetPath, { replace: true });
     } catch (err) {
       const msg =
         err?.response?.data?.message ||

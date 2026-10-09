@@ -67,8 +67,19 @@ const Sidebar = ({
   logout,
   themeColors,
 }) => {
-  // 🔥 Sirf wahi routes jo hide: true NA ho
-  const visibleRoutes = routes.filter((r) => !r.hide);
+  // 🔥 Check if user has permission to view this route
+  const hasPermission = (route) => {
+    if (route.superAdminOnly) {
+      return user?.role === "SUPER_ADMIN";
+    }
+    if (!route.permission) return true;
+    if (user?.role === "SUPER_ADMIN") return true;
+    const permissions = user?.permissions || {};
+    return permissions[route.permission] === true;
+  };
+
+  // Filter routes that are not hidden and user has permission for
+  const visibleRoutes = routes.filter((r) => !r.hide && hasPermission(r));
 
   // Active check — nested paths handle karega (e.g. /surveys/123/questions)
   const isRouteActive = (route) => {
@@ -175,13 +186,13 @@ const Sidebar = ({
                 className="font-medium text-sm truncate"
                 style={{ color: themeColors.text }}
               >
-                {user?.name || "Auction Manager"}
+                {user?.name || (user?.role === "SUPER_ADMIN" ? "Super Admin" : "Sub Admin")}
               </p>
               <p
-                className="text-xs opacity-75 truncate"
+                className="text-xs opacity-75 truncate font-medium"
                 style={{ color: themeColors.textSecondary }}
               >
-                {user?.role || "Administrator"}
+                {user?.role === "SUPER_ADMIN" ? "Super Administrator" : "Sub Admin"}
               </p>
             </div>
           </div>
