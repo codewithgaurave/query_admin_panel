@@ -919,10 +919,10 @@ export default function SurveyCharts() {
       </div>
 
       {/* Layout: left survey list, right charts */}
-      <div className="grid grid-cols-1 md:grid-cols-[290px,1fr] xl:grid-cols-[320px,1fr] gap-5 items-start">
+      <div className="flex flex-col md:flex-row gap-5 items-start w-full">
         {/* Left: survey list panel */}
         <div
-          className="rounded-2xl border p-4 shadow-sm flex flex-col md:sticky md:top-4 h-[75vh] min-h-[480px]"
+          className="w-full md:w-[300px] xl:w-[340px] shrink-0 rounded-2xl border p-4 shadow-sm flex flex-col md:sticky md:top-0 h-auto md:h-[calc(100vh-140px)] min-h-[480px]"
           style={{
             backgroundColor: themeColors.surface,
             borderColor: themeColors.border,
@@ -1055,7 +1055,7 @@ export default function SurveyCharts() {
         </div>
 
         {/* Right: active survey charts */}
-        <div className="space-y-4 md:space-y-5 min-w-0">
+        <div className="flex-1 min-w-0 w-full space-y-4 md:space-y-5">
           {!activeSurvey && (
             <p
               className="text-sm md:text-base opacity-75"

@@ -72,42 +72,41 @@ export const AVAILABLE_MODULES = [
     badgeBg: "bg-cyan-100 text-cyan-900",
     isSuperAdminOnly: false,
   },
-  // 🔒 SUPER ADMIN EXCLUSIVE MODULES (Cannot be assigned to Sub Admins)
   {
     key: "surveys",
     name: "Surveys Management",
     desc: "Create, edit, duplicate surveys and configure survey questions",
     icon: FaClipboardList,
-    bgActive: "bg-slate-100 border-slate-300 text-slate-400",
-    badgeBg: "bg-amber-100 text-amber-800",
-    isSuperAdminOnly: true,
+    bgActive: "bg-purple-50 border-purple-200 text-purple-700",
+    badgeBg: "bg-purple-100 text-purple-800",
+    isSuperAdminOnly: false,
   },
   {
     key: "users",
     name: "User Management",
-    desc: "Manage surveyors and QC engineers, create accounts, edit and block/unblock",
+    desc: "Create and manage own field surveyors & QC engineers, view user profiles",
     icon: FaUser,
-    bgActive: "bg-slate-100 border-slate-300 text-slate-400",
-    badgeBg: "bg-amber-100 text-amber-800",
-    isSuperAdminOnly: true,
+    bgActive: "bg-blue-50 border-blue-200 text-blue-700",
+    badgeBg: "bg-blue-100 text-blue-800",
+    isSuperAdminOnly: false,
   },
   {
     key: "surveyCharts",
     name: "Analytics & Charts",
-    desc: "View platform-wide graphical breakdowns, charts and analytics",
+    desc: "View graphical breakdowns, response charts and analytics for surveys",
     icon: FaChartBar,
-    bgActive: "bg-slate-100 border-slate-300 text-slate-400",
+    bgActive: "bg-amber-50 border-amber-200 text-amber-800",
     badgeBg: "bg-amber-100 text-amber-800",
-    isSuperAdminOnly: true,
+    isSuperAdminOnly: false,
   },
 ];
 
 export const DEFAULT_PERMISSIONS = {
   dashboard: true,
-  surveys: false,       // Exclusive to Super Admin
+  surveys: true,
   surveyResponses: true,
-  surveyCharts: false,  // Exclusive to Super Admin
-  users: false,         // Exclusive to Super Admin
+  surveyCharts: true,
+  users: true,
   punchins: false,
   pinnedQuestions: false,
 };
