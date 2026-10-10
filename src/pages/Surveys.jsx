@@ -20,6 +20,7 @@ import {
   FaUser,
   FaCopy,
   FaUserShield,
+  FaTimes,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -77,6 +78,32 @@ export default function Surveys() {
   const [allQCs, setAllQCs] = useState([]); // ✅ QCs state
   const [usersLoading, setUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState("");
+  const [userSearchText, setUserSearchText] = useState("");
+  const [qcSearchText, setQcSearchText] = useState("");
+
+  const filteredSurveyUsers = useMemo(() => {
+    if (!userSearchText.trim()) return allUsers;
+    const q = userSearchText.toLowerCase().trim();
+    return allUsers.filter(
+      (u) =>
+        (u.fullName && u.fullName.toLowerCase().includes(q)) ||
+        (u.userCode && u.userCode.toLowerCase().includes(q)) ||
+        (u.mobile && u.mobile.toString().toLowerCase().includes(q)) ||
+        (u.email && u.email.toLowerCase().includes(q))
+    );
+  }, [allUsers, userSearchText]);
+
+  const filteredQCs = useMemo(() => {
+    if (!qcSearchText.trim()) return allQCs;
+    const q = qcSearchText.toLowerCase().trim();
+    return allQCs.filter(
+      (u) =>
+        (u.fullName && u.fullName.toLowerCase().includes(q)) ||
+        (u.userCode && u.userCode.toLowerCase().includes(q)) ||
+        (u.mobile && u.mobile.toString().toLowerCase().includes(q)) ||
+        (u.email && u.email.toLowerCase().includes(q))
+    );
+  }, [allQCs, qcSearchText]);
 
   // filters
   const [search, setSearch] = useState("");
@@ -332,6 +359,8 @@ export default function Surveys() {
   const resetForm = () => {
     setNewSurvey(emptySurveyForm);
     setEditingSurveyId(null);
+    setUserSearchText("");
+    setQcSearchText("");
   };
 
   const handleOpenCreate = () => {
@@ -1053,10 +1082,96 @@ export default function Surveys() {
 
             {/* ✅ ASSIGN USERS SECTION (CREATE + EDIT dono me) */}
             <div className="md:col-span-2 lg:col-span-3">
-              <label className="text-xs font-medium block mb-2 flex items-center gap-1">
-                <FaUser />
-                Assign to Employees (Survey Users)
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium flex items-center gap-1.5">
+                  <FaUser className="text-indigo-600 dark:text-indigo-400" />
+                  Assign to Employees (Survey Users)
+                </label>
+                <span
+                  className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+                  style={{
+                    backgroundColor: themeColors.primary + "18",
+                    color: themeColors.primary,
+                  }}
+                >
+                  {newSurvey.assignedUserIds.length} of {allUsers.length} selected
+                </span>
+              </div>
+
+              {/* 🔍 Search bar for Employees */}
+              <div className="relative mb-2">
+                <FaSearch
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-xs opacity-40 pointer-events-none"
+                  style={{ color: themeColors.text }}
+                />
+                <input
+                  type="text"
+                  placeholder="Search employees by name, ID or mobile..."
+                  value={userSearchText}
+                  onChange={(e) => setUserSearchText(e.target.value)}
+                  className="w-full pl-8 pr-8 py-2 rounded-lg border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  style={{
+                    borderColor: themeColors.border,
+                    backgroundColor: themeColors.background,
+                    color: themeColors.text,
+                  }}
+                />
+                {userSearchText && (
+                  <button
+                    type="button"
+                    onClick={() => setUserSearchText("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs opacity-50 hover:opacity-100 p-1"
+                    style={{ color: themeColors.text }}
+                    title="Clear search"
+                  >
+                    <FaTimes />
+                  </button>
+                )}
+              </div>
+
+              {/* Quick actions for Employees */}
+              {allUsers.length > 0 && (
+                <div className="flex items-center justify-between mb-1.5 px-0.5">
+                  <span className="text-[11px] opacity-60" style={{ color: themeColors.text }}>
+                    {filteredSurveyUsers.length} {filteredSurveyUsers.length === 1 ? "employee" : "employees"} shown
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const idsToAdd = filteredSurveyUsers.map((u) => u._id);
+                        setNewSurvey((prev) => ({
+                          ...prev,
+                          assignedUserIds: Array.from(
+                            new Set([...prev.assignedUserIds, ...idsToAdd])
+                          ),
+                        }));
+                      }}
+                      className="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Select All {userSearchText.trim() ? "Filtered" : ""}
+                    </button>
+                    <span className="opacity-30 text-xs">|</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const idsToRemove = new Set(
+                          filteredSurveyUsers.map((u) => u._id)
+                        );
+                        setNewSurvey((prev) => ({
+                          ...prev,
+                          assignedUserIds: prev.assignedUserIds.filter(
+                            (id) => !idsToRemove.has(id)
+                          ),
+                        }));
+                      }}
+                      className="text-[11px] font-medium text-red-500 hover:underline"
+                    >
+                      Deselect All {userSearchText.trim() ? "Filtered" : ""}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {usersLoading ? (
                 <p
@@ -1079,23 +1194,33 @@ export default function Surveys() {
                 >
                   No active SURVEY_USER found to assign.
                 </p>
+              ) : filteredSurveyUsers.length === 0 ? (
+                <div
+                  className="border rounded-lg p-3 text-center text-xs opacity-70"
+                  style={{
+                    borderColor: themeColors.border,
+                    color: themeColors.text,
+                  }}
+                >
+                  No employees found matching "{userSearchText}".
+                </div>
               ) : (
                 <div className="max-h-48 overflow-auto border rounded-lg p-2 space-y-1"
                   style={{ borderColor: themeColors.border }}
                 >
-                  {allUsers.map((u) => {
+                  {filteredSurveyUsers.map((u) => {
                     const checked = newSurvey.assignedUserIds.includes(u._id);
                     return (
                       <label
                         key={u._id}
-                        className="flex items-center gap-2 text-xs cursor-pointer px-2 py-1 rounded-md hover:bg-black/5"
+                        className="flex items-center gap-2 text-xs cursor-pointer px-2 py-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                         style={{ color: themeColors.text }}
                       >
                         <input
                           type="checkbox"
                           checked={checked}
                           onChange={() => handleToggleAssignedUser(u._id)}
-                          className="w-4 h-4"
+                          className="w-4 h-4 rounded text-blue-600"
                         />
                         <span className="font-medium">{u.fullName}</span>
                         <span className="opacity-70">
@@ -1119,10 +1244,96 @@ export default function Surveys() {
 
             {/* ✅ ASSIGN QCs SECTION (CREATE + EDIT dono me) */}
             <div className="md:col-span-2 lg:col-span-3">
-              <label className="text-xs font-medium block mb-2 flex items-center gap-1">
-                <FaUsersCog />
-                Assign to Quality Engineers (QC)
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium flex items-center gap-1.5">
+                  <FaUsersCog className="text-indigo-600 dark:text-indigo-400" />
+                  Assign to Quality Engineers (QC)
+                </label>
+                <span
+                  className="text-[11px] px-2 py-0.5 rounded-full font-medium"
+                  style={{
+                    backgroundColor: themeColors.primary + "18",
+                    color: themeColors.primary,
+                  }}
+                >
+                  {newSurvey.assignedQCIds.length} of {allQCs.length} selected
+                </span>
+              </div>
+
+              {/* 🔍 Search bar for QCs */}
+              <div className="relative mb-2">
+                <FaSearch
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-xs opacity-40 pointer-events-none"
+                  style={{ color: themeColors.text }}
+                />
+                <input
+                  type="text"
+                  placeholder="Search QCs by name, ID or mobile..."
+                  value={qcSearchText}
+                  onChange={(e) => setQcSearchText(e.target.value)}
+                  className="w-full pl-8 pr-8 py-2 rounded-lg border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  style={{
+                    borderColor: themeColors.border,
+                    backgroundColor: themeColors.background,
+                    color: themeColors.text,
+                  }}
+                />
+                {qcSearchText && (
+                  <button
+                    type="button"
+                    onClick={() => setQcSearchText("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs opacity-50 hover:opacity-100 p-1"
+                    style={{ color: themeColors.text }}
+                    title="Clear search"
+                  >
+                    <FaTimes />
+                  </button>
+                )}
+              </div>
+
+              {/* Quick actions for QCs */}
+              {allQCs.length > 0 && (
+                <div className="flex items-center justify-between mb-1.5 px-0.5">
+                  <span className="text-[11px] opacity-60" style={{ color: themeColors.text }}>
+                    {filteredQCs.length} {filteredQCs.length === 1 ? "QC" : "QCs"} shown
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const idsToAdd = filteredQCs.map((u) => u._id);
+                        setNewSurvey((prev) => ({
+                          ...prev,
+                          assignedQCIds: Array.from(
+                            new Set([...prev.assignedQCIds, ...idsToAdd])
+                          ),
+                        }));
+                      }}
+                      className="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Select All {qcSearchText.trim() ? "Filtered" : ""}
+                    </button>
+                    <span className="opacity-30 text-xs">|</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const idsToRemove = new Set(
+                          filteredQCs.map((u) => u._id)
+                        );
+                        setNewSurvey((prev) => ({
+                          ...prev,
+                          assignedQCIds: prev.assignedQCIds.filter(
+                            (id) => !idsToRemove.has(id)
+                          ),
+                        }));
+                      }}
+                      className="text-[11px] font-medium text-red-500 hover:underline"
+                    >
+                      Deselect All {qcSearchText.trim() ? "Filtered" : ""}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {usersLoading ? (
                 <p
@@ -1145,23 +1356,33 @@ export default function Surveys() {
                 >
                   No active QUALITY_ENGINEER found to assign.
                 </p>
+              ) : filteredQCs.length === 0 ? (
+                <div
+                  className="border rounded-lg p-3 text-center text-xs opacity-70"
+                  style={{
+                    borderColor: themeColors.border,
+                    color: themeColors.text,
+                  }}
+                >
+                  No Quality Engineers found matching "{qcSearchText}".
+                </div>
               ) : (
                 <div className="max-h-48 overflow-auto border rounded-lg p-2 space-y-1"
                   style={{ borderColor: themeColors.border }}
                 >
-                  {allQCs.map((u) => {
+                  {filteredQCs.map((u) => {
                     const checked = newSurvey.assignedQCIds.includes(u._id);
                     return (
                       <label
                         key={u._id}
-                        className="flex items-center gap-2 text-xs cursor-pointer px-2 py-1 rounded-md hover:bg-black/5"
+                        className="flex items-center gap-2 text-xs cursor-pointer px-2 py-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                         style={{ color: themeColors.text }}
                       >
                         <input
                           type="checkbox"
                           checked={checked}
                           onChange={() => handleToggleAssignedQC(u._id)}
-                          className="w-4 h-4"
+                          className="w-4 h-4 rounded text-blue-600"
                         />
                         <span className="font-medium">{u.fullName}</span>
                         <span className="opacity-70">
