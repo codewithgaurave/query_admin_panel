@@ -18,6 +18,8 @@ import {
   FaExternalLinkAlt,
   FaUserShield,
   FaUserCheck,
+  FaCalendarAlt,
+  FaDownload,
 } from "react-icons/fa";
 import { useTheme } from "../context/ThemeContext";
 import {
@@ -40,6 +42,53 @@ const fmtDateTime = (d) => {
   } catch {
     return "-";
   }
+};
+
+const formatDateStr = (d) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const isWithinDateRange = (dateInput, startStr, endStr) => {
+  if (!startStr && !endStr) return true;
+  if (!dateInput) return false;
+  try {
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return true;
+    const dStr = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+    if (startStr && dStr < startStr) return false;
+    if (endStr && dStr > endStr) return false;
+    return true;
+  } catch {
+    return true;
+  }
+};
+
+const getDateFilterSuffix = (startStr, endStr) => {
+  if (startStr && endStr) {
+    if (startStr === endStr) return `_${startStr}`;
+    return `_${startStr}_to_${endStr}`;
+  }
+  if (startStr) return `_from_${startStr}`;
+  if (endStr) return `_upto_${endStr}`;
+  return "";
+};
+
+const getDateFilterLabel = (startStr, endStr) => {
+  if (startStr && endStr) {
+    if (startStr === endStr) return startStr;
+    return `${startStr} to ${endStr}`;
+  }
+  if (startStr) return `From ${startStr}`;
+  if (endStr) return `Up to ${endStr}`;
+  return "All Time";
 };
 
 const handleCopyAudioLink = (audioUrl) => {
@@ -201,11 +250,27 @@ export default function SurveyResponses() {
   // common exporting state (CSV / Excel)
   const [exportingSurveyId, setExportingSurveyId] = useState(null);
 
-  const loadSummary = async () => {
+  // Date filter state
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [datePreset, setDatePreset] = useState("ALL");
+
+  // Date-wise Export Modal state
+  const [exportModalSurvey, setExportModalSurvey] = useState(null);
+  const [modalStartDate, setModalStartDate] = useState("");
+  const [modalEndDate, setModalEndDate] = useState("");
+  const [modalDatePreset, setModalDatePreset] = useState("ALL");
+
+  const loadSummary = async (dateParams) => {
     try {
       setLoading(true);
       setError("");
-      const res = await listSurveyResponseSummary();
+      const params = {};
+      const activeStart = dateParams ? dateParams.startDate : startDate;
+      const activeEnd = dateParams ? dateParams.endDate : endDate;
+      if (activeStart) params.startDate = activeStart;
+      if (activeEnd) params.endDate = activeEnd;
+      const res = await listSurveyResponseSummary(params);
       setSummary(res.surveys || []);
     } catch (err) {
       const msg =
@@ -229,9 +294,115 @@ export default function SurveyResponses() {
   };
 
   useEffect(() => {
-    loadSummary();
     loadSubAdmins();
   }, []);
+
+  useEffect(() => {
+    loadSummary({ startDate, endDate });
+  }, [startDate, endDate]);
+
+  const handleApplyPreset = (preset) => {
+    setDatePreset(preset);
+    const now = new Date();
+
+    if (preset === "ALL") {
+      setStartDate("");
+      setEndDate("");
+    } else if (preset === "TODAY") {
+      const todayStr = formatDateStr(now);
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === "YESTERDAY") {
+      const yest = new Date(now);
+      yest.setDate(yest.getDate() - 1);
+      const yestStr = formatDateStr(yest);
+      setStartDate(yestStr);
+      setEndDate(yestStr);
+    } else if (preset === "LAST_7") {
+      const endStr = formatDateStr(now);
+      const start = new Date(now);
+      start.setDate(start.getDate() - 6);
+      const startStr = formatDateStr(start);
+      setStartDate(startStr);
+      setEndDate(endStr);
+    } else if (preset === "LAST_30") {
+      const endStr = formatDateStr(now);
+      const start = new Date(now);
+      start.setDate(start.getDate() - 29);
+      const startStr = formatDateStr(start);
+      setStartDate(startStr);
+      setEndDate(endStr);
+    } else if (preset === "THIS_MONTH") {
+      const endStr = formatDateStr(now);
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startStr = formatDateStr(start);
+      setStartDate(startStr);
+      setEndDate(endStr);
+    }
+  };
+
+  const handleCustomDateChange = (startVal, endVal) => {
+    setDatePreset("CUSTOM");
+    setStartDate(startVal);
+    setEndDate(endVal);
+  };
+
+  const handleClearDateFilter = () => {
+    setDatePreset("ALL");
+    setStartDate("");
+    setEndDate("");
+  };
+
+  const openExportModal = (survey) => {
+    setExportModalSurvey(survey);
+    setModalStartDate(startDate);
+    setModalEndDate(endDate);
+    setModalDatePreset(datePreset);
+  };
+
+  const closeExportModal = () => {
+    setExportModalSurvey(null);
+  };
+
+  const handleApplyModalPreset = (preset) => {
+    setModalDatePreset(preset);
+    const now = new Date();
+
+    if (preset === "ALL") {
+      setModalStartDate("");
+      setModalEndDate("");
+    } else if (preset === "TODAY") {
+      const todayStr = formatDateStr(now);
+      setModalStartDate(todayStr);
+      setModalEndDate(todayStr);
+    } else if (preset === "YESTERDAY") {
+      const yest = new Date(now);
+      yest.setDate(yest.getDate() - 1);
+      const yestStr = formatDateStr(yest);
+      setModalStartDate(yestStr);
+      setModalEndDate(yestStr);
+    } else if (preset === "LAST_7") {
+      const endStr = formatDateStr(now);
+      const start = new Date(now);
+      start.setDate(start.getDate() - 6);
+      const startStr = formatDateStr(start);
+      setModalStartDate(startStr);
+      setModalEndDate(endStr);
+    } else if (preset === "LAST_30") {
+      const endStr = formatDateStr(now);
+      const start = new Date(now);
+      start.setDate(start.getDate() - 29);
+      const startStr = formatDateStr(start);
+      setModalStartDate(startStr);
+      setModalEndDate(endStr);
+    } else if (preset === "THIS_MONTH") {
+      const endStr = formatDateStr(now);
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startStr = formatDateStr(start);
+      setModalStartDate(startStr);
+      setModalEndDate(endStr);
+    }
+  };
 
   const filteredSummary = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -296,7 +467,8 @@ export default function SurveyResponses() {
   };
 
   // -------- Helper: collect all records + question order (common for CSV & Excel) --------
-  const collectSurveyRecords = async (surveySummaryItem) => {
+  const collectSurveyRecords = async (surveySummaryItem, dateFilterOverride = null) => {
+    const activeFilter = dateFilterOverride || { startDate, endDate };
     const surveyIdOrCode =
       surveySummaryItem.surveyId || surveySummaryItem.surveyCode;
     let rawResponses = [];
@@ -312,9 +484,9 @@ export default function SurveyResponses() {
       console.warn("Could not fetch survey questions directly:", err);
     }
 
-    // 2. Fetch all survey responses in one direct query
+    // 2. Fetch all survey responses in one direct query with dateFilter
     try {
-      const respRes = await getSurveyResponses(surveyIdOrCode);
+      const respRes = await getSurveyResponses(surveyIdOrCode, activeFilter);
       if (respRes?.responses && Array.isArray(respRes.responses)) {
         rawResponses = respRes.responses;
       }
@@ -353,6 +525,13 @@ export default function SurveyResponses() {
           console.error("Fallback user summary fetch error", err);
         }
       }
+    }
+
+    // Client-side date filter safeguard
+    if (activeFilter.startDate || activeFilter.endDate) {
+      rawResponses = rawResponses.filter((r) =>
+        isWithinDateRange(r.createdAt, activeFilter.startDate, activeFilter.endDate)
+      );
     }
 
     // 3. Build Question Columns List with Unique Identifiers and Clear Labels
@@ -466,23 +645,30 @@ export default function SurveyResponses() {
   };
 
   // ---------------- CSV EXPORT ----------------
-  const handleExportSurveyCSV = async (surveySummaryItem) => {
+  const handleExportSurveyCSV = async (surveySummaryItem, dateFilterOverride = null) => {
     if (!surveySummaryItem) return;
+    const activeFilter = dateFilterOverride || { startDate, endDate };
 
     try {
       setExportingSurveyId(surveySummaryItem.surveyId);
       toast.info("CSV export prepare ho raha hai...");
 
       const { allRecords, questionColumns } =
-        await collectSurveyRecords(surveySummaryItem);
+        await collectSurveyRecords(surveySummaryItem, activeFilter);
 
       if (allRecords.length === 0) {
         toast.error(
-          "Is survey ke liye export karne layak koi response nahi mila."
+          activeFilter.startDate || activeFilter.endDate
+            ? `Selected date range (${activeFilter.startDate || "Beginning"} to ${activeFilter.endDate || "Present"}) me koi response nahi mila.`
+            : "Is survey ke liye export karne layak koi response nahi mila."
         );
         setExportingSurveyId(null);
         return;
       }
+
+      const dateFilterText = activeFilter.startDate || activeFilter.endDate
+        ? `${activeFilter.startDate || "Beginning"} to ${activeFilter.endDate || "Present"}`
+        : "All Time";
 
       const rows = [];
 
@@ -491,6 +677,9 @@ export default function SurveyResponses() {
       rows.push(["Survey ID", surveySummaryItem.surveyId]);
       rows.push(["Survey Code", surveySummaryItem.surveyCode || "-"]);
       rows.push(["Survey Name", surveySummaryItem.name || "-"]);
+      rows.push(["Date Filter", dateFilterText]);
+      rows.push(["Total Responses Exported", allRecords.length]);
+      rows.push(["Exported At (IST)", new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })]);
       rows.push([]);
 
       // Header row
@@ -551,10 +740,11 @@ export default function SurveyResponses() {
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
+      const dateSuffix = getDateFilterSuffix(activeFilter.startDate, activeFilter.endDate);
       const safeName =
         (surveySummaryItem.name || "survey")
           .replace(/[^\w\-]+/g, "_")
-          .substring(0, 80) + "_responses_export.csv";
+          .substring(0, 70) + `_responses_export${dateSuffix}.csv`;
       link.href = url;
       link.setAttribute("download", safeName);
       document.body.appendChild(link);
@@ -575,19 +765,22 @@ export default function SurveyResponses() {
   };
 
   // ---------------- EXCEL EXPORT ----------------
-  const handleExportSurveyExcel = async (surveySummaryItem) => {
+  const handleExportSurveyExcel = async (surveySummaryItem, dateFilterOverride = null) => {
     if (!surveySummaryItem) return;
+    const activeFilter = dateFilterOverride || { startDate, endDate };
 
     try {
       setExportingSurveyId(surveySummaryItem.surveyId);
       toast.info("Excel export prepare ho raha hai...");
 
       const { allRecords, questionColumns } =
-        await collectSurveyRecords(surveySummaryItem);
+        await collectSurveyRecords(surveySummaryItem, activeFilter);
 
       if (allRecords.length === 0) {
         toast.error(
-          "Is survey ke liye export karne layak koi response nahi mila."
+          activeFilter.startDate || activeFilter.endDate
+            ? `Selected date range (${activeFilter.startDate || "Beginning"} to ${activeFilter.endDate || "Present"}) me koi response nahi mila.`
+            : "Is survey ke liye export karne layak koi response nahi mila."
         );
         setExportingSurveyId(null);
         return;
@@ -630,12 +823,19 @@ export default function SurveyResponses() {
 
       const wb = XLSX.utils.book_new();
 
+      const dateFilterText = activeFilter.startDate || activeFilter.endDate
+        ? `${activeFilter.startDate || "Beginning"} to ${activeFilter.endDate || "Present"}`
+        : "All Time";
+
       // Meta sheet
       const metaSheetData = [
         ["Survey Responses Export"],
         ["Survey ID", surveySummaryItem.surveyId],
         ["Survey Code", surveySummaryItem.surveyCode || "-"],
         ["Survey Name", surveySummaryItem.name || "-"],
+        ["Date Filter", dateFilterText],
+        ["Total Responses Exported", dataRows.length],
+        ["Exported At (IST)", new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })],
       ];
       const metaWs = XLSX.utils.aoa_to_sheet(metaSheetData);
       XLSX.utils.book_append_sheet(wb, metaWs, "Meta");
@@ -651,10 +851,11 @@ export default function SurveyResponses() {
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
+      const dateSuffix = getDateFilterSuffix(activeFilter.startDate, activeFilter.endDate);
       const safeName =
         (surveySummaryItem.name || "survey")
           .replace(/[^\w\-]+/g, "_")
-          .substring(0, 80) + "_responses_export.xlsx";
+          .substring(0, 70) + `_responses_export${dateSuffix}.xlsx`;
 
       link.href = url;
       link.setAttribute("download", safeName);
@@ -676,18 +877,29 @@ export default function SurveyResponses() {
   };
 
   // ---------------- USER-WISE SURVEY & QC REPORT EXPORT ----------------
-  const handleExportUserWiseReport = async (surveySummaryItem) => {
+  const handleExportUserWiseReport = async (surveySummaryItem, dateFilterOverride = null) => {
     if (!surveySummaryItem) return;
+    const activeFilter = dateFilterOverride || { startDate, endDate };
 
     try {
       setExportingSurveyId(surveySummaryItem.surveyId);
       toast.info("User-Wise Survey Report prepare ho raha hai...");
 
-      const respRes = await getSurveyResponses(surveySummaryItem.surveyId);
-      const rawResponses = respRes.responses || [];
+      const respRes = await getSurveyResponses(surveySummaryItem.surveyId, activeFilter);
+      let rawResponses = respRes.responses || [];
+
+      if (activeFilter.startDate || activeFilter.endDate) {
+        rawResponses = rawResponses.filter((r) =>
+          isWithinDateRange(r.createdAt, activeFilter.startDate, activeFilter.endDate)
+        );
+      }
 
       if (rawResponses.length === 0) {
-        toast.error("Is survey ke liye export karne layak koi response nahi mila.");
+        toast.error(
+          activeFilter.startDate || activeFilter.endDate
+            ? `Selected date range (${activeFilter.startDate || "Beginning"} to ${activeFilter.endDate || "Present"}) me koi response nahi mila.`
+            : "Is survey ke liye export karne layak koi response nahi mila."
+        );
         setExportingSurveyId(null);
         return;
       }
@@ -789,11 +1001,16 @@ export default function SurveyResponses() {
       // 3. Create Excel Workbook with Meta sheet + User-Wise Report sheet
       const wb = XLSX.utils.book_new();
 
+      const dateFilterText = activeFilter.startDate || activeFilter.endDate
+        ? `${activeFilter.startDate || "Beginning"} to ${activeFilter.endDate || "Present"}`
+        : "All Time";
+
       const metaSheetData = [
         ["User-Wise Survey Report"],
         ["Survey ID", surveySummaryItem.surveyId],
         ["Survey Code", surveySummaryItem.surveyCode || "-"],
         ["Survey Name", surveySummaryItem.name || "-"],
+        ["Date Filter", dateFilterText],
         ["Total Survey Responses", rawResponses.length],
         ["Total Unique Surveyors", userList.length],
         ["QC Mode", isQcCompletedForSurvey ? "QC Completed (Valid vs Invalid Breakdown)" : "QC Not Completed (Sample Survey Counts)"],
@@ -811,10 +1028,11 @@ export default function SurveyResponses() {
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
+      const dateSuffix = getDateFilterSuffix(activeFilter.startDate, activeFilter.endDate);
       const safeName =
         (surveySummaryItem.name || "survey")
           .replace(/[^\w\-]+/g, "_")
-          .substring(0, 80) + "_user_wise_report.xlsx";
+          .substring(0, 70) + `_user_wise_report${dateSuffix}.xlsx`;
 
       link.href = url;
       link.setAttribute("download", safeName);
@@ -833,18 +1051,29 @@ export default function SurveyResponses() {
   };
 
   // ---------------- QC USER REPORT EXPORT ----------------
-  const handleExportQCUserReport = async (surveySummaryItem) => {
+  const handleExportQCUserReport = async (surveySummaryItem, dateFilterOverride = null) => {
     if (!surveySummaryItem) return;
+    const activeFilter = dateFilterOverride || { startDate, endDate };
 
     try {
       setExportingSurveyId(surveySummaryItem.surveyId);
       toast.info("QC User Report prepare ho raha hai...");
 
-      const respRes = await getSurveyResponses(surveySummaryItem.surveyId);
-      const rawResponses = respRes.responses || [];
+      const respRes = await getSurveyResponses(surveySummaryItem.surveyId, activeFilter);
+      let rawResponses = respRes.responses || [];
+
+      if (activeFilter.startDate || activeFilter.endDate) {
+        rawResponses = rawResponses.filter((r) =>
+          isWithinDateRange(r.createdAt, activeFilter.startDate, activeFilter.endDate)
+        );
+      }
 
       if (rawResponses.length === 0) {
-        toast.error("Is survey ke liye export karne layak koi sample response nahi mila.");
+        toast.error(
+          activeFilter.startDate || activeFilter.endDate
+            ? `Selected date range (${activeFilter.startDate || "Beginning"} to ${activeFilter.endDate || "Present"}) me koi response nahi mila.`
+            : "Is survey ke liye export karne layak koi sample response nahi mila."
+        );
         setExportingSurveyId(null);
         return;
       }
@@ -960,11 +1189,16 @@ export default function SurveyResponses() {
       // 5. Create Excel Workbook
       const wb = XLSX.utils.book_new();
 
+      const dateFilterText = activeFilter.startDate || activeFilter.endDate
+        ? `${activeFilter.startDate || "Beginning"} to ${activeFilter.endDate || "Present"}`
+        : "All Time";
+
       const metaSheetData = [
         ["QC User Report - Survey Verification & Audio Review"],
         ["Survey ID", surveySummaryItem.surveyId],
         ["Survey Code", surveySummaryItem.surveyCode || "-"],
         ["Survey Name", surveySummaryItem.name || "-"],
+        ["Date Filter", dateFilterText],
         ["Total Samples Submitted", rawResponses.length],
         ["Total Unique Surveyors", surveyorMetrics.size],
         ["Exported At (IST)", new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })],
@@ -984,10 +1218,11 @@ export default function SurveyResponses() {
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
+      const dateSuffix = getDateFilterSuffix(activeFilter.startDate, activeFilter.endDate);
       const safeName =
         (surveySummaryItem.name || "survey")
           .replace(/[^\w\-]+/g, "_")
-          .substring(0, 80) + "_QC_User_Report.xlsx";
+          .substring(0, 70) + `_QC_User_Report${dateSuffix}.xlsx`;
 
       link.href = url;
       link.setAttribute("download", safeName);
@@ -1006,18 +1241,29 @@ export default function SurveyResponses() {
   };
 
   // ---------------- SURVEYOR WISE DATA REPORT (LIGHTWEIGHT QC SUMMARY) ----------------
-  const handleExportSurveyorWiseQCReport = async (surveySummaryItem) => {
+  const handleExportSurveyorWiseQCReport = async (surveySummaryItem, dateFilterOverride = null) => {
     if (!surveySummaryItem) return;
+    const activeFilter = dateFilterOverride || { startDate, endDate };
 
     try {
       setExportingSurveyId(surveySummaryItem.surveyId);
       toast.info("Surveyor Wise Data Report prepare ho raha hai...");
 
-      const respRes = await getSurveyResponses(surveySummaryItem.surveyId);
-      const rawResponses = respRes.responses || [];
+      const respRes = await getSurveyResponses(surveySummaryItem.surveyId, activeFilter);
+      let rawResponses = respRes.responses || [];
+
+      if (activeFilter.startDate || activeFilter.endDate) {
+        rawResponses = rawResponses.filter((r) =>
+          isWithinDateRange(r.createdAt, activeFilter.startDate, activeFilter.endDate)
+        );
+      }
 
       if (rawResponses.length === 0) {
-        toast.error("Is survey ke liye export karne layak koi response nahi mila.");
+        toast.error(
+          activeFilter.startDate || activeFilter.endDate
+            ? `Selected date range (${activeFilter.startDate || "Beginning"} to ${activeFilter.endDate || "Present"}) me koi response nahi mila.`
+            : "Is survey ke liye export karne layak koi response nahi mila."
+        );
         setExportingSurveyId(null);
         return;
       }
@@ -1065,10 +1311,11 @@ export default function SurveyResponses() {
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
+      const dateSuffix = getDateFilterSuffix(activeFilter.startDate, activeFilter.endDate);
       const safeName =
         (surveySummaryItem.name || "survey")
           .replace(/[^\w\-]+/g, "_")
-          .substring(0, 80) + "_Surveyor_Wise_QC_Report.xlsx";
+          .substring(0, 70) + `_Surveyor_Wise_QC_Report${dateSuffix}.xlsx`;
 
       link.href = url;
       link.setAttribute("download", safeName);
@@ -1087,7 +1334,7 @@ export default function SurveyResponses() {
   };
 
   // ---- Loading & error for main ----
-  if (loading) {
+  if (loading && (!summary || summary.length === 0)) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
         <div className="text-center">
@@ -1657,6 +1904,108 @@ export default function SurveyResponses() {
             </select>
           </div>
         </div>
+
+        {/* Date Filter Section */}
+        <div
+          className="mt-4 pt-3 border-t flex flex-col lg:flex-row lg:items-center justify-between gap-3"
+          style={{ borderColor: themeColors.border }}
+        >
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span
+              className="text-xs font-semibold mr-1 flex items-center gap-1.5"
+              style={{ color: themeColors.text }}
+            >
+              <FaCalendarAlt className="text-indigo-500" />
+              <span>Date Filter:</span>
+            </span>
+            {[
+              { id: "ALL", label: "All Time" },
+              { id: "TODAY", label: "Today" },
+              { id: "YESTERDAY", label: "Yesterday" },
+              { id: "LAST_7", label: "Last 7 Days" },
+              { id: "LAST_30", label: "Last 30 Days" },
+              { id: "THIS_MONTH", label: "This Month" },
+            ].map((p) => {
+              const isActive = datePreset === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => handleApplyPreset(p.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                      : "hover:bg-slate-100 dark:hover:bg-slate-800"
+                  }`}
+                  style={{
+                    borderColor: isActive ? themeColors.primary : themeColors.border,
+                    color: isActive ? "#ffffff" : themeColors.text,
+                  }}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] opacity-70" style={{ color: themeColors.text }}>From:</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => handleCustomDateChange(e.target.value, endDate)}
+                className="px-2.5 py-1 rounded-lg border text-xs"
+                style={{
+                  borderColor: themeColors.border,
+                  backgroundColor: themeColors.background,
+                  color: themeColors.text,
+                }}
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] opacity-70" style={{ color: themeColors.text }}>To:</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => handleCustomDateChange(startDate, e.target.value)}
+                className="px-2.5 py-1 rounded-lg border text-xs"
+                style={{
+                  borderColor: themeColors.border,
+                  backgroundColor: themeColors.background,
+                  color: themeColors.text,
+                }}
+              />
+            </div>
+            {(startDate || endDate) && (
+              <button
+                type="button"
+                onClick={handleClearDateFilter}
+                className="text-xs px-2.5 py-1 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800 transition-colors cursor-pointer font-medium"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Date Filter Active Pill */}
+        {(startDate || endDate) && (
+          <div className="mt-3 text-xs flex items-center justify-between px-3 py-1.5 rounded-lg bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">⚡ Date Filter Active:</span>
+              <span className="font-bold">{getDateFilterLabel(startDate, endDate)}</span>
+              <span className="opacity-70 text-[11px] hidden sm:inline">— All report downloads will be filtered for this date range.</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearDateFilter}
+              className="text-[11px] font-semibold underline hover:text-indigo-900 dark:hover:text-indigo-100 cursor-pointer"
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       <div
@@ -1818,13 +2167,31 @@ export default function SurveyResponses() {
                   {/* Export buttons */}
                   <td className="px-4 py-3 text-xs">
                     <div className="flex flex-col gap-1.5 min-w-[200px]">
+                      {/* Date-Wise Modal button */}
+                      <button
+                        type="button"
+                        onClick={() => openExportModal(s)}
+                        title="Download reports by selecting custom date range"
+                        className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all shadow-sm bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:from-indigo-600 hover:to-purple-700 cursor-pointer"
+                      >
+                        <FaCalendarAlt className="text-[10px]" />
+                        <span>Date-Wise Download</span>
+                      </button>
+
+                      {/* Active date filter indicator on direct buttons */}
+                      {(startDate || endDate) && (
+                        <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium text-center bg-indigo-50/80 dark:bg-indigo-950/40 py-0.5 px-1.5 rounded border border-indigo-200/60 dark:border-indigo-800/40">
+                          Active: {getDateFilterLabel(startDate, endDate)}
+                        </div>
+                      )}
+
                       {/* 1. Report 1: Raw Data Report */}
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => handleExportSurveyExcel(s)}
                           disabled={exportingSurveyId === s.surveyId}
-                          title="Export complete raw survey data (All questions, answers & metadata)"
+                          title={startDate || endDate ? `Export Excel for ${getDateFilterLabel(startDate, endDate)}` : "Export complete raw survey data (All questions, answers & metadata)"}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold disabled:opacity-60 transition-colors"
                           style={{
                             borderColor: themeColors.primary,
@@ -1839,7 +2206,7 @@ export default function SurveyResponses() {
                           type="button"
                           onClick={() => handleExportSurveyCSV(s)}
                           disabled={exportingSurveyId === s.surveyId}
-                          title="Export complete raw survey data as CSV"
+                          title={startDate || endDate ? `Export CSV for ${getDateFilterLabel(startDate, endDate)}` : "Export complete raw survey data as CSV"}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold disabled:opacity-60 transition-colors"
                           style={{
                             borderColor: themeColors.primary,
@@ -1858,7 +2225,7 @@ export default function SurveyResponses() {
                           type="button"
                           onClick={() => handleExportSurveyorWiseQCReport(s)}
                           disabled={exportingSurveyId === s.surveyId}
-                          title="Export Surveyor Wise Data Report (Strictly: QC User Name, Surveyor Name, Audio URL, QC Remark/Status)"
+                          title={startDate || endDate ? `Export Surveyor Wise Data Report for ${getDateFilterLabel(startDate, endDate)}` : "Export Surveyor Wise Data Report (Strictly: QC User Name, Surveyor Name, Audio URL, QC Remark/Status)"}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold disabled:opacity-60 transition-colors shadow-sm bg-purple-50 text-purple-700 border-purple-300 hover:bg-purple-100 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800"
                         >
                           <FaHeadphones />
@@ -1872,7 +2239,7 @@ export default function SurveyResponses() {
                           type="button"
                           onClick={() => handleExportUserWiseReport(s)}
                           disabled={exportingSurveyId === s.surveyId}
-                          title="Export User-Wise Survey Report (Valid vs Invalid Counts / Total Samples)"
+                          title={startDate || endDate ? `Export User-Wise Survey Report for ${getDateFilterLabel(startDate, endDate)}` : "Export User-Wise Survey Report (Valid vs Invalid Counts / Total Samples)"}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-semibold disabled:opacity-60 transition-colors shadow-sm bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
                         >
                           <FaUserCheck />
@@ -1899,6 +2266,236 @@ export default function SurveyResponses() {
           </table>
         </div>
       </div>
+
+      {/* DATE-WISE EXPORT MODAL */}
+      {exportModalSurvey && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
+          <div
+            className="rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden border my-8"
+            style={{
+              backgroundColor: themeColors.surface,
+              borderColor: themeColors.border,
+            }}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-white/20 rounded-xl backdrop-blur-sm">
+                  <FaFileExcel className="text-xl text-yellow-300" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold">Download Reports (Date-Wise)</h2>
+                  <p className="text-xs text-indigo-100 font-medium">
+                    {exportModalSurvey.name} ({exportModalSurvey.surveyCode})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={closeExportModal}
+                className="p-2 hover:bg-white/20 rounded-xl transition-colors cursor-pointer text-white"
+              >
+                <FaTimes className="text-lg" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Date Filter Box */}
+              <div
+                className="p-4 rounded-xl border space-y-3"
+                style={{
+                  borderColor: themeColors.border,
+                  backgroundColor: themeColors.background + "40",
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: themeColors.primary }}>
+                    <FaCalendarAlt /> Select Date Range
+                  </span>
+                  {(modalStartDate || modalEndDate) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalDatePreset("ALL");
+                        setModalStartDate("");
+                        setModalEndDate("");
+                      }}
+                      className="text-[11px] font-semibold text-rose-500 hover:text-rose-600 cursor-pointer"
+                    >
+                      Clear Filter (All Time)
+                    </button>
+                  )}
+                </div>
+
+                {/* Presets */}
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: "ALL", label: "All Time" },
+                    { id: "TODAY", label: "Today" },
+                    { id: "YESTERDAY", label: "Yesterday" },
+                    { id: "LAST_7", label: "Last 7 Days" },
+                    { id: "LAST_30", label: "Last 30 Days" },
+                    { id: "THIS_MONTH", label: "This Month" },
+                  ].map((p) => {
+                    const isActive = modalDatePreset === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handleApplyModalPreset(p.id)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                            : "hover:bg-slate-100 dark:hover:bg-slate-800"
+                        }`}
+                        style={{
+                          borderColor: isActive ? themeColors.primary : themeColors.border,
+                          color: isActive ? "#ffffff" : themeColors.text,
+                        }}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Date inputs */}
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-medium mb-1 opacity-70" style={{ color: themeColors.text }}>
+                      From Date
+                    </label>
+                    <input
+                      type="date"
+                      value={modalStartDate}
+                      onChange={(e) => {
+                        setModalDatePreset("CUSTOM");
+                        setModalStartDate(e.target.value);
+                      }}
+                      className="w-full px-3 py-1.5 rounded-lg border text-xs"
+                      style={{
+                        borderColor: themeColors.border,
+                        backgroundColor: themeColors.surface,
+                        color: themeColors.text,
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium mb-1 opacity-70" style={{ color: themeColors.text }}>
+                      To Date
+                    </label>
+                    <input
+                      type="date"
+                      value={modalEndDate}
+                      onChange={(e) => {
+                        setModalDatePreset("CUSTOM");
+                        setModalEndDate(e.target.value);
+                      }}
+                      className="w-full px-3 py-1.5 rounded-lg border text-xs"
+                      style={{
+                        borderColor: themeColors.border,
+                        backgroundColor: themeColors.surface,
+                        color: themeColors.text,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="text-[11px] font-medium opacity-80 pt-1" style={{ color: themeColors.text }}>
+                  Selected Range: <span className="font-bold text-indigo-600 dark:text-indigo-400">{getDateFilterLabel(modalStartDate, modalEndDate)}</span>
+                </div>
+              </div>
+
+              {/* Download Buttons */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider opacity-75" style={{ color: themeColors.text }}>
+                  Select Report to Download
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Surveyor Wise QC Report */}
+                  <button
+                    type="button"
+                    disabled={exportingSurveyId === (exportModalSurvey.surveyId || exportModalSurvey.surveyCode)}
+                    onClick={() => handleExportSurveyorWiseQCReport(exportModalSurvey, { startDate: modalStartDate, endDate: modalEndDate })}
+                    className="flex items-start gap-3 p-3.5 rounded-xl border text-left hover:border-purple-500 hover:shadow-md transition-all cursor-pointer group bg-purple-50/50 dark:bg-purple-950/20"
+                    style={{ borderColor: themeColors.border }}
+                  >
+                    <div className="p-2 bg-purple-600 text-white rounded-lg group-hover:scale-105 transition-transform">
+                      <FaHeadphones className="text-base" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-purple-700 dark:text-purple-300">Surveyor Wise QC Report</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5 line-clamp-2">QC User, Surveyor Name, Audio URL & QC Remark (.xlsx)</div>
+                    </div>
+                  </button>
+
+                  {/* User-Wise Report */}
+                  <button
+                    type="button"
+                    disabled={exportingSurveyId === (exportModalSurvey.surveyId || exportModalSurvey.surveyCode)}
+                    onClick={() => handleExportUserWiseReport(exportModalSurvey, { startDate: modalStartDate, endDate: modalEndDate })}
+                    className="flex items-start gap-3 p-3.5 rounded-xl border text-left hover:border-emerald-500 hover:shadow-md transition-all cursor-pointer group bg-emerald-50/50 dark:bg-emerald-950/20"
+                    style={{ borderColor: themeColors.border }}
+                  >
+                    <div className="p-2 bg-emerald-600 text-white rounded-lg group-hover:scale-105 transition-transform">
+                      <FaUserCheck className="text-base" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-emerald-700 dark:text-emerald-300">User-Wise Report</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5 line-clamp-2">Surveyor performance, Valid vs Invalid & QC breakdown (.xlsx)</div>
+                    </div>
+                  </button>
+
+                  {/* Raw Data Report (Excel) */}
+                  <button
+                    type="button"
+                    disabled={exportingSurveyId === (exportModalSurvey.surveyId || exportModalSurvey.surveyCode)}
+                    onClick={() => handleExportSurveyExcel(exportModalSurvey, { startDate: modalStartDate, endDate: modalEndDate })}
+                    className="flex items-start gap-3 p-3.5 rounded-xl border text-left hover:border-blue-500 hover:shadow-md transition-all cursor-pointer group bg-blue-50/50 dark:bg-blue-950/20"
+                    style={{ borderColor: themeColors.border }}
+                  >
+                    <div className="p-2 bg-blue-600 text-white rounded-lg group-hover:scale-105 transition-transform">
+                      <FaFileExcel className="text-base" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-blue-700 dark:text-blue-300">Raw Data Report (Excel)</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5 line-clamp-2">All questions, answers, locations & metadata (.xlsx)</div>
+                    </div>
+                  </button>
+
+                  {/* Raw Data (CSV) */}
+                  <button
+                    type="button"
+                    disabled={exportingSurveyId === (exportModalSurvey.surveyId || exportModalSurvey.surveyCode)}
+                    onClick={() => handleExportSurveyCSV(exportModalSurvey, { startDate: modalStartDate, endDate: modalEndDate })}
+                    className="flex items-start gap-3 p-3.5 rounded-xl border text-left hover:border-amber-500 hover:shadow-md transition-all cursor-pointer group bg-amber-50/50 dark:bg-amber-950/20"
+                    style={{ borderColor: themeColors.border }}
+                  >
+                    <div className="p-2 bg-amber-600 text-white rounded-lg group-hover:scale-105 transition-transform">
+                      <FaFileExcel className="text-base" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-amber-700 dark:text-amber-300">Raw Data (CSV)</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5 line-clamp-2">Plain CSV format for large datasets & scripting (.csv)</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/50 border-t flex justify-end" style={{ borderColor: themeColors.border }}>
+              <button
+                type="button"
+                onClick={closeExportModal}
+                className="px-4 py-2 rounded-xl text-xs font-medium border hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                style={{ borderColor: themeColors.border, color: themeColors.text }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

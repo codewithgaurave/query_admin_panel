@@ -82,9 +82,10 @@ export const getSurveyWithQuestions = async (surveyIdOrCode) => {
  * GET /survey/:surveyIdOrCode/responses
  * Admin: list all responses for a survey
  */
-export const getSurveyResponses = async (surveyIdOrCode) => {
+export const getSurveyResponses = async (surveyIdOrCode, params = {}) => {
   const { data } = await http.get(`/survey/${surveyIdOrCode}/responses`, {
     headers: authHeaders(),
+    params,
   });
   // backend: { survey, responses }
   return data;
