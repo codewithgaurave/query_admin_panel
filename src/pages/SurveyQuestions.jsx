@@ -69,6 +69,7 @@ export default function SurveyQuestions() {
     // ⭐ Other option controls
     enableOtherOption: false,
     otherOptionLabel: "Other",
+    isOtherRequired: false,
     // ⭐ Follow-up controls
     parentQuestionId: null,
     parentOptionValue: "",
@@ -128,6 +129,7 @@ export default function SurveyQuestions() {
       helpText: "",
       enableOtherOption: false,
       otherOptionLabel: "Other",
+      isOtherRequired: false,
       parentQuestionId: null,
       parentOptionValue: "",
     });
@@ -214,6 +216,7 @@ export default function SurveyQuestions() {
         ) {
           next.enableOtherOption = false;
           next.otherOptionLabel = "Other";
+          next.isOtherRequired = false;
         }
 
         return next;
@@ -273,6 +276,9 @@ export default function SurveyQuestions() {
         if (newQuestion.enableOtherOption) {
           payload.otherOptionLabel =
             newQuestion.otherOptionLabel?.trim() || "Other";
+          payload.isOtherRequired = !!newQuestion.isOtherRequired;
+        } else {
+          payload.isOtherRequired = false;
         }
       }
 
@@ -361,6 +367,7 @@ export default function SurveyQuestions() {
               helpText: "",
               enableOtherOption: false,
               otherOptionLabel: "Other",
+              isOtherRequired: false,
               parentQuestionId: null,
               parentOptionValue: "",
             };
@@ -421,6 +428,7 @@ export default function SurveyQuestions() {
       helpText: q.helpText || "",
       enableOtherOption: !!q.enableOtherOption,
       otherOptionLabel: q.otherOptionLabel || "Other",
+      isOtherRequired: !!q.isOtherRequired,
       parentQuestionId: q.parentQuestion || null,
       parentOptionValue: q.parentOptionValue || "",
     });
@@ -471,6 +479,7 @@ export default function SurveyQuestions() {
       helpText: "",
       enableOtherOption: false,
       otherOptionLabel: "Other",
+      isOtherRequired: false,
       parentQuestionId: parentId,
       parentOptionValue: optionValue,
     });
@@ -747,6 +756,9 @@ export default function SurveyQuestions() {
                             style={{ color: themeColors.primary }}
                           >
                             {q.otherOptionLabel || "Other"} (free text)
+                            <span className="ml-1 text-[10px] font-normal opacity-80">
+                              {q.isOtherRequired ? "• Required" : "• Optional"}
+                            </span>
                           </span>
                         </div>
                       </div>
@@ -1421,6 +1433,54 @@ export default function SurveyQuestions() {
                         }}
                       />
                     </div>
+
+                    {/* ⭐ Make Other required toggle */}
+                    <div
+                      className="mt-2 pt-2 border-t flex items-center justify-between gap-2"
+                      style={{ borderColor: themeColors.border }}
+                    >
+                      <div>
+                        <p
+                          className="text-xs font-semibold"
+                          style={{ color: themeColors.text }}
+                        >
+                          "Other" input required
+                        </p>
+                        <p
+                          className="text-[11px] opacity-70"
+                          style={{ color: themeColors.text }}
+                        >
+                          Agar enable hua, to Other chunne par user ke liye details likhna mandatory hoga.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={!newQuestion.enableOtherOption}
+                        onClick={() =>
+                          handleQChange(
+                            "isOtherRequired",
+                            !newQuestion.isOtherRequired
+                          )
+                        }
+                        className="p-2 rounded-lg border cursor-pointer"
+                        style={{
+                          borderColor: themeColors.border,
+                          color:
+                            newQuestion.isOtherRequired &&
+                            newQuestion.enableOtherOption
+                              ? themeColors.success
+                              : themeColors.text,
+                          opacity: newQuestion.enableOtherOption ? 1 : 0.6,
+                        }}
+                      >
+                        {newQuestion.isOtherRequired &&
+                        newQuestion.enableOtherOption ? (
+                          <FaToggleOn />
+                        ) : (
+                          <FaToggleOff />
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   {/* Small preview */}
@@ -1452,14 +1512,17 @@ export default function SurveyQuestions() {
 
                         {newQuestion.enableOtherOption && (
                           <span
-                            className="inline-flex items-center px-2.5 py-1 rounded-full border text-[11px] italic"
+                            className="inline-flex items-center px-2.5 py-1 rounded-full border text-[11px] italic gap-1"
                             style={{
                               borderColor: themeColors.primary,
                               backgroundColor: themeColors.surface,
                               color: themeColors.primary,
                             }}
                           >
-                            {newQuestion.otherOptionLabel || "Other"} (free text)
+                            <span>{newQuestion.otherOptionLabel || "Other"} (free text)</span>
+                            <span className="text-[10px] opacity-80 font-medium">
+                              {newQuestion.isOtherRequired ? "(Required)" : "(Optional)"}
+                            </span>
                           </span>
                         )}
                       </div>
